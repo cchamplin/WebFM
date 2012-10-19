@@ -1,0 +1,232 @@
+<?php
+require_once(drupal_get_path('module','webfm') . '/webfm.filebackend.inc');
+
+function webfm_local_webfm_init()
+{
+  $lfb = new LocalFileBackend();
+  webfm_register_backend($lfb);
+  webfm_set_active_backend($lfb->getName());
+}
+
+
+class LocalFileBackend implements IWebfm_FileBackend
+{
+  public function getName()
+  {
+    return t("Local File Backend");
+  }
+  public function pathExists($path)
+  {
+    return is_dir(file_default_scheme() . '://' .  $path);
+  }
+  public function buildWebTree($path, $name = "ROOT")
+  {
+    $path_actual = file_default_scheme() . '://' . $path;
+    $tree = array();
+    $dirs = array();
+    if (!user_access('access webfm'))
+    {
+        return array();
+    }
+    if (!user_access('access any webfm directory'))
+    {
+      global $user;
+      $query = db_select('webfm_dir','d')
+               ->fields('d',array('did','uid','path'))
+               ->condition('path',db_like($path_actual) .'/%','LIKE')->addTag('webfm_check_directories');
+       $result = $query->execute();
+//      $result = db_query('SELECT path,uid FROM {webfm_dir} d WHERE d.path LIKE :root', array(':root' => db_like($path_actual).'/%'))->fetchAll(PDO::FETCH_ASSOC);
+     while($record = $result->fetchAssoc()) {
+        $dirs[$record['path']] = $record;
+      }
+      $tree[$name] = array('/'.$path=>$this->_recursive_tree($path_actual, $user->uid, $dirs));
+    }
+    else
+    {
+      $tree[$name] = array('/'.$path=>$this->_recursive_tree($path_actual));
+    }
+    return $tree;
+  }
+  private function _recursive_tree($root,$uid = null,$dirs = null)
+  {
+    $files = array();
+    if (is_dir($root) && $handle = opendir($root))
+    {
+      while(($filename = readdir($handle)) !== FALSE)
+      {
+        //Ignore hidden files, and parent directories
+        if ($filename[0] == '.')
+          continue;
+        if (is_dir($root .'/'.$filename))
+        {
+          if ($dirs !== null && !isset($dirs[$root . '/'  .$filename]))
+          {
+             $fields = array('uid'=>0,'path'=>$root . '/' . $filename);
+             db_insert('webfm_dir')->fields($fields)->execute();
+          }
+          else 
+          {
+            if ($dirs === null || $dirs[$root . '/' . $filename]['uid'] == $uid)
+            {
+               $files[$filename] = $this->_recursive_tree($root . '/' .$filename,$uid,$dirs);
+            }
+          }
+        }
+      }
+      closedir($handle);
+    }
+    return $files;
+  }
+  public function buildFileData($path)
+  {
+    if ($path[0] == '/')
+     $path = substr($path,1);
+    $root_path = file_default_scheme() . '://' . $path;
+
+    $access = null;
+    foreach (module_implements('webfm_check_file_access') as $module) {
+      $access =  module_invoke($module,'webfm_check_file_access',$root_path);
+      if ($access == true)
+        break;
+    }
+    $db_dirs = null;
+    global $user;
+    if (!$access)
+    {
+      if (!user_access('access webfm'))
+      {
+        return array('dirs'=>array(),'files'=>array());
+      }
+      if (!user_access('access any webfm directory'))
+      {
+        $cond = db_or()->condition('path',$root_path,'=')
+                  ->condition(db_and()->condition('path',db_like($root_path) .'/%','LIKE')
+                                      ->condition('path',db_like($root_path) .'/%/%','NOT LIKE'));
+        $query = db_select('webfm_dir','d')->fields('d',array('did','path','uid'))->condition($cond)->addTag('webfm_check_files');
+        $result = $query->execute();
+        //$result = db_query('SELECT path,uid FROM {webfm_dir} d WHERE d.path = :root_base OR (d.path LIKE :root AND d.path NOT LIKE :root_ext)', array(':root_base'=>$root_path,':root' => db_like($root_path).'/%',':root_ext'=>db_like($root_path) . '/%/%'))->fetchAll(PDO::FETCH_ASSOC);
+        while ($record = $result->fetchAssoc()) {
+          $db_dirs[$record['path']] = $record['uid'];
+        }
+        if ($root_path == file_default_scheme() . '://' . variable_get('webfm_root',"SITE"))
+        {
+           if (!isset($db_dirs[$root_path]))
+           {
+             $fields = array('uid'=>0,'path'=>$root_path);
+             db_insert('webfm_dir')->fields($fields)->execute();
+           }
+        }
+        if ($root_path != file_default_scheme() . '://' . variable_get('webfm_root',"SITE") && $db_dirs[$root_path] != $user->uid)
+          return array('dirs'=>array(),'files'=>array());
+      }
+      $view_all_files = user_access('access any webfm document view');
+      $view_own_files = user_access('access own webfm document view');
+    }
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type','file')
+    ->propertyCondition('uri',$root_path .'/%','LIKE')
+    ->propertyCondition('uri',$root_path .'/%/%','NOT LIKE');
+    $ret_ids = $query->execute();
+    $file_ids = array_keys($ret_ids['file']);
+    $db_files = file_load_multiple($file_ids);
+
+
+    $dirs = array();
+    $files = array();
+    //$cache_invalid = false;
+    if ($handle = opendir($root_path))
+    {
+      while(($filename = readdir($handle)) !== FALSE)
+      {
+        //Ignore hidden files, and parent directories
+        if ($filename[0] == '.')
+          continue;
+        if (is_dir($root_path . '/' . $filename))
+        {
+          if ($access || $db_dirs === null || $db_dirs[$root_path . '/' . $filename] == $user->uid)
+            $dirs[] = array('n' => $filename,'p' => '/' . $path . '/' . $filename, 'm'=> filemtime($root_path . '/' . $filename));
+        }
+        else
+        {
+          $ext_data = explode('.', $filename);
+          $files[$filename] = array('n' => $filename,
+          'p' => '/' . $path,
+          'm'=> filemtime($root_path . '/' . $filename),
+          'e'=>array_pop($ext_data),
+          's'=>filesize($root_path . '/'.$filename));
+        }
+      }
+      closedir($handle);
+    }
+ 
+    $records_to_add = array();
+    $records_to_remove = array();
+    $records_to_index = array();
+    if (!$view_all_files && !$view_own_files)
+    {
+       $files = array();
+    }
+    else
+    {
+      foreach($db_files as $record)
+      {
+        if(array_key_exists($record->filename,$files))
+        {
+          if (!$access && ((!$view_all_files) && ($record->uid != $user->uid)))
+          {
+            unset($files[$record->filename]);
+          }
+          else
+          {
+            $files[$record->filename]['id'] = $record->fid;
+            if (!property_exists($record,'webfm'))
+              $records_to_index[] = $record;
+            $files[$record->filename]['handled'] = true;
+          }
+        }
+        else
+        {
+          $records_to_remove[] = $record;
+        }
+      }
+      foreach  ($files as $file)
+      {
+        if(!$file['handled'])
+        {
+          //It doesn't exist in the database that we can see add it
+          $records_to_add[] = $file;
+          if (!$view_all_files)
+          {
+            unset($files[$file['n']]);
+          }
+        }
+        else
+        {
+          unset($files[$file['n']]['handled']);
+        }
+      }
+      foreach ($records_to_add as $newrecord)
+      {
+        $file = new stdClass();
+        $file->fid = null;
+        $file->webfm = true;
+        $file->uid = 0;
+        $file->filename = $newrecord['n'];
+        $file->uri = $root_path .'/'. $file->filename;
+        $file->filemime = file_get_mimetype($root_path . '/' . $file->filename);
+        $file->status   = FILE_STATUS_PERMANENT;
+        file_save($file);
+      }
+      foreach ($records_to_remove as $file)
+      {
+        file_delete($file);
+      }
+      foreach ($records_to_index as $file)
+      {
+        $fields = array('fid'=>$file->fid,'modified'=>filemtime($file->uri));
+        db_insert('webfm_file')->fields($fields)->execute();
+      }
+    }
+    return array('dirs'=>$dirs,'files'=>$files);
+  }
+}

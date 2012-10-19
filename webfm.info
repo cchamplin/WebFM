@@ -1,0 +1,6 @@
+name = WebFM
+description = A WebFM Replacement for Drupal 7
+core = 7.x
+package = "WebFM"
+version = 7.x-alpha1
+dependencies[] = jquery_update

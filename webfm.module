@@ -1,0 +1,817 @@
+<?php
+/**
+* @file
+* WebFM Module
+*/
+
+// Include permissions handling
+require_once(drupal_get_path('module','webfm') . '/webfm.permissions.inc');
+// Include widget
+require_once(drupal_get_path('module','webfm') . '/webfm.widget.inc');
+
+/**
+* Implements hook_menu().
+*/
+function webfm_menu()
+{
+  $items = array();
+  $items['documents'] = array(
+    'title' => t('Document Management'),
+    'description' => t('Administer Documents for WebFM'),
+    'page callback' => 'webfm_documents_view',
+    'access callback' => 'webfm_documents_access',
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['webfm/browser'] = array(
+    'title' => t('Document Management'),
+    'description' => t('Administer Documents for WebFM'),
+    'page callback' => 'webfm_file_browser',
+    'access callback' => 'webfm_file_browser_access',
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/config/media/webfm'] = array(
+    'title' => t('WebFM'),
+    'description' => t('Administer Documents for WebFM'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('webfm_settings_form'),
+    'access arguments' => array('administer webfm'),
+    'access callback' => 'user_access',
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['webfm/%/view'] = array(
+    'title' => t('File view'),
+    'description' => t('View a WebFM File'),
+    'page callback' => 'webfm_file_view',
+    'page arguments'=> array(1),
+    'access callback' => 'webfm_document_view_access',
+    'type' => MENU_CALLBACK,
+  );
+  $items['webfm/%'] = array(
+    'title' => t('File download'),
+    'description' => t('Download a WebFM File'),
+    'page callback' => 'webfm_file_download',
+    'page arguments'=> array(1),
+    'access callback' => 'webfm_document_download_access',
+    'type' => MENU_CALLBACK,
+  );
+  $items['webfm_js'] = array(
+    'title' => t('API Data Request'),
+    'description' => t('Data Request For WebFM'),
+    'page callback' => 'webfm_json',
+    'access callback' => 'webfm_documents_access',
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+function webfm_documents_access()
+{
+  return user_access('access webfm');
+}
+function webfm_file_browser_access()
+{
+  return user_access('access webfm');
+}
+function webfm_document_download_access()
+{
+  return user_access('access any webfm document download') || user_access('access own webfm document download');;
+}
+function webfm_document_view_access()
+{
+  return user_access('access any webfm document view') || user_access('access own webfm document view');
+}
+
+/**
+* Implements hook_info().
+*/
+function webfm_hook_info()
+{
+  $hooks = array();
+  $hooks['webfm_file_uploaded'] = array('group' => 'webfm');
+}
+
+/**
+* Implements hook_webfm_file_uploaded().
+*
+* @todo Standardize parameter and variable names
+*/
+function webfm_webfm_file_uploaded($fname,$fid,$dest)
+{
+  $file = file_load($fid);
+  if ($file)
+  {
+    $file->status = FILE_STATUS_PERMANENT;
+    $file = file_move($file,file_default_scheme() . '://' . $dest . '/' . $fname,FILE_EXISTS_ERROR);
+    $file->filename = $fname;
+    $file->uri = file_default_scheme() . '://' . $dest . '/' . $fname;
+    file_save($file);
+    $fields = array('fid'=>$file->fid,'modified'=>filemtime($file->uri));
+    db_insert('webfm_file')->fields($fields)->execute();
+
+  }
+}
+/**
+* Implements hook_file_load().
+*
+* @todo Adjust/Replace this to make better use of Drupal 7 Entity API
+*/
+function webfm_file_load($files)
+{
+  $result = db_query('SELECT fid,modified FROM {webfm_file} f WHERE f.fid IN (:fids)', array(':fids' => array_keys($files)))->fetchAll(PDO::FETCH_ASSOC);
+  foreach ($result as $record) {
+    $files[$record['fid']]->webfm = true;
+    foreach ($record as $key => $value) {
+      $files[$record['fid']]->$key = $value;
+    }
+  }
+}
+
+/**
+* Implements hook_file_insert().
+*
+* @todo Adjust/Replace this to make better use of Drupal 7 Entity API
+*/
+function webfm_file_insert($file) {
+   if (property_exists($file,'webfm') && $file->webfm)
+   {
+     $fields = array('fid'=>$file->fid,'modified'=>filemtime($file->uri));
+     db_insert('webfm_file')->fields($fields)->execute();
+   }
+}
+
+/**
+* Implements hook_file_update().
+*
+* @todo Adjust/Replace this to make better use of Drupal 7 Entity API
+*/
+function webfm_file_update($file) {
+   if (property_exists($file,'webfm') && $file->webfm)
+   {
+     $fields = array('modified'=>filemtime($file->uri));
+     db_update('webfm_file')->fields($fields)->condition('fid',$file->fid,'=')->execute();
+   }
+}
+
+/**
+* Implements hook_permission.
+*/
+function webfm_permission()
+{
+  return array(
+    'administer webfm' => array(
+      'title' => t('Administer WebFM'),
+      'description' => t('Allow users to administer WebFM'),
+    ),
+    'access webfm' => array(
+      'title' => t('Access WebFM Document Management Page'),
+      'description' => t('Allow users to access webfm browser or document viewer'),
+    ),
+    'access any webfm document view' => array(
+      'title' => t('View any documents'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'access any webfm document download' => array(
+      'title' => t('Download any documents'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'access own webfm document view' => array(
+      'title' => t('View own documents'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'access own webfm document download' => array(
+      'title' => t('Download own documents'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'access any webfm directory' => array(
+      'title' => t('Access any webfm directory'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'create webfm file' => array(
+      'title' => t('Upload files to webfm'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'create webfm directory' => array(
+      'title' => t('Create directories in webfm'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'delete any webfm file' => array(
+      'title' => t('Delete any webfm file'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'delete any webfm directory' => array(
+      'title' => t('Delete any webfm directory'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'delete own webfm files' => array(
+      'title' => t('Delete own webfm files'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'delete own webfm directories' => array(
+      'title' => t('Delete own webfm directories'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'replace any webfm file' => array(
+      'title' => t('Replace any webfm file'),
+      'description' => t('Allow users to access webfm files'),
+    ),
+    'modify any webfm directory' => array(
+      'title' => t('Modify any webfm directory'),
+      'description' => t('Allow user to move or rename webfm directories'),
+    ),
+    'modify own webfm directories' => array(
+      'title' => t('Modify own webfm directories'),
+      'description' => t('Allow users to move or rename their own webfm directories'),
+    ),
+    'modify any webfm file' => array(
+      'title' => t('Modify any webfm file'),
+      'description' => t('Allow users to move or rename webfm files'),
+    ),
+    'modify own webfm files' => array(
+      'title' => t('Modify own webfm files'),
+      'description' => t('Allow users to move or rename their own webfm files'),
+    ),
+  );
+}
+
+/**
+* Implements hook_theme().
+*/
+function webfm_theme(&$existing, $type, $theme, $path)
+{
+  $hooks = array();
+  $webfm_path = drupal_get_path('module','webfm') . '/tpl';
+  $hooks['webfm-documents'] = array(
+    'template' => 'webfm.documents',
+    'path' => $webfm_path,
+  );
+  $hooks['webfm-browser'] = array(
+    'template' => 'webfm.browser',
+    'path' => $webfm_path,
+  );
+  return $hooks;
+}
+/**
+* Handle file download request
+*/
+function webfm_file_download($fid)
+{
+  $fid = intval($fid);
+  if ($fid <= 0)
+  {
+    drupal_not_found();
+    exit();
+  }
+
+  $file_obj = file_load($fid);
+  if (!$file_obj)
+  {
+    drupal_not_found();
+    exit();
+  }
+  if (!user_access('access any webfm document download'))
+  {
+    global $user;
+    if ($user->uid != $file_obj->uid)
+    {
+      drupal_access_denied();
+      exit();
+    }
+  }
+  $name = mime_header_encode($file_obj->filename);
+  $type = mime_header_encode($file_obj->filemime);
+  $http_headers = array(
+    'Content-Type' => $type . '; name="'. $name . '"',
+    'Content-Disposition' => 'attachment; filename="' . $file_obj->filename . '"',
+    'Content-Length' => filesize($file_obj->uri),
+  );
+  $http_headers['Cache-Control'] = 'private';
+  if(strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE')) {
+    $http_headers['Cache-Control'] = 'must-revalidate, post-check=0, pre-check=0';
+    $http_headers['Pragma'] = 'public';
+  }
+  else
+  {
+    $http_headers['Pragma'] = 'no-cache';
+  }
+  file_transfer($file_obj->uri, $http_headers);
+}
+
+/**
+* Handle file view request
+*
+* @todo Standarize code between this and down and put shared code into separate function.
+*/
+function webfm_file_view($fid)
+{
+  $fid = intval($fid);
+  if ($fid <= 0)
+  {
+    drupal_not_found();
+    exit();
+  }
+
+  $file_obj = file_load($fid);
+  if (!$file_obj)
+  {
+    drupal_not_found();
+    exit();
+  }
+  if (!user_access('access any webfm document view'))
+  {
+    global $user;
+    if ($user->uid != $file_obj->uid)
+    {
+      drupal_access_denied();
+      exit();
+    }
+  }
+  $name = mime_header_encode($file_obj->filename);
+  $type = mime_header_encode($file_obj->filemime);
+
+  $inline_types = variable_get('file_inline_types', array('^text/', '^image/', 'flash$','^application/pdf'));
+  $disposition = 'attachment';
+  foreach ($inline_types as $inline_type) {
+    // Exclamation marks are used as delimiters to avoid escaping slashes.
+    if (preg_match('!' . $inline_type . '!', $file_obj->filemime)) {
+      $disposition = 'inline';
+    }
+  }
+
+  $http_headers = array(
+    'Content-Type' => $type . '; name="'. $name . '"',
+    'Content-Disposition' => $disposition.'; filename="' . $file_obj->filename . '"',
+    'Content-Length' => filesize($file_obj->uri),
+  );
+  if ($disposition == "attachment")
+  {
+    if(strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE')) {
+      $http_headers['Cache-Control'] = 'must-revalidate, post-check=0, pre-check=0';
+      $http_headers['Pragma'] = 'public';
+    } 
+    else 
+    {
+      $http_headers['Pragma'] = 'no-cache';
+    }
+  }
+  else
+  {
+    $http_headers['Cache-Control'] = 'private';
+  }
+  file_transfer($file_obj->uri, $http_headers);
+}
+/**
+* Implements hook_wysiwyg_plugin().
+*
+* @todo Investigate supporting other wysiwyg's
+*/
+function webfm_wysiwyg_plugin($editor, $version) {
+  if ($editor == 'ckeditor') {
+    return array('webfm' => array(
+      'load' => FALSE,
+      'options'=> array('filebrowserBrowseUrl'=>'/webfm/browser',),
+      'extensions' => array('Webfm' => t('WebFM')),
+    ));
+  }
+}
+/**
+* Handle viewing of the documents page
+*/
+function webfm_documents_view()
+{
+  // Invoke the webfm_init hook
+  module_invoke_all('webfm_init');
+
+  // Investigate moving this into a hook for webfm_init
+  webfm_js();
+  webfm_css();
+
+
+  $form_markup = '';
+  // Only provide the upload markup if they are allowed to upload files
+  if (user_access('create webfm file'))
+  {
+    $form_markup = drupal_get_form('webfm_uploader_form');
+  }
+  $webfm_markup = theme('webfm-documents',array());
+  $page = array('content'=>array(
+    'webfm' => array('#markup'=>$webfm_markup),
+    'webfm_file_upload' => $form_markup,
+  ));
+  return $page;
+}
+/**
+* Handle webfm file browser page (used for inbedded pages, wyiwyg etc)
+*/
+function webfm_file_browser()
+{
+  // Invoke webfm_init hook
+  module_invoke_all('webfm_init');
+  // See comment in documents view
+  webfm_js();
+  webfm_css();
+
+  $form_markup = '';
+  // Only provide the upload markup if they have permission to create files
+  if (user_access('create webfm file'))
+  {
+    $form_markup = drupal_render(drupal_get_form('webfm_uploader_form'));
+  }
+  $webfm_markup = theme('webfm-documents',array());
+  print theme('webfm-browser',array('content'=>$webfm_markup . $form_markup));
+  module_invoke_all('exit');
+  exit();
+}
+/**
+* Uploader form
+*
+* @todo Increase support for third party modules drop in of uploader
+* @todo Ensure that a valid uploader exists, provide a simple default if not
+*/
+function webfm_uploader_form($form, &$form_state)
+{
+  $form = array();
+  $form['#attributes']['class'][] = 'webfm-uploader-form';
+  $form['webfm_uploader'] = array(
+   '#title' => t('Upload Files'),
+   '#type' => 'webfm_managed_file',
+   '#description' => t('Choose files to upload into WebFM'),
+  );
+  return $form;
+}
+
+/**
+* Helper function to decode utf8 parameters
+*/
+function webfm_utf8_urldecode($str)
+{
+    $str = preg_replace("/%u([0-9a-f]{3,4})/i","&#x\\1;",urldecode($str));
+    return html_entity_decode($str,null,'UTF-8');;
+}
+
+/**
+* Handle JSON Requests, this is where any ajax request will come in
+*
+* @todo Consider renaming this function
+*/
+function webfm_json()
+{
+  // Invoke webfm_init hook
+  module_invoke_all('webfm_init');
+
+  // Include the file backend class definition
+  require_once(dirname(__FILE__) . '/webfm.filebackend.inc');
+
+  // Get a valid file backend
+  // This will hopefully in the future support things like S3 etc
+  $backend = webfm_get_active_backend();
+
+  // Ensure a valid backend has been included
+  if ($backend == null)
+  {
+    watchdog('WebFM',t('Failed to load WebFM file backend, please make sure the module is enabled'),array(),WATCHDOG_ERROR);
+    return;
+  }
+
+  // Grab the requestion ajax action from the post arguments
+  $action = $_POST['action'];
+
+  // @todo rethink this code, quick and dirty atm
+  $param0 = (!empty($_POST['param0'])) ? $_POST['param0'] : null;
+  $param1 = (!empty($_POST['param1'])) ? $_POST['param1'] : null;
+  $param2 = (!empty($_POST['param2'])) ? $_POST['param2'] : null;
+  $param3 = (!empty($_POST['param3'])) ? $_POST['param3'] : null;
+  $param4 = (!empty($_POST['param4'])) ? $_POST['param4'] : null;
+
+  // Set out content type header
+  // @todo Consider moving this line of code
+  drupal_add_http_header('Content-type', 'application/json');
+
+  // Intialize response array
+  $response = array();
+
+  // Set success status to true by default
+  $response['status'] = "true";
+
+  // Invoke webfm_json_action hook
+  module_invoke_all('webfm_json_action',$backend,$response,$action,$param0,$param1,$param2,$param3,$param4);
+
+  // Default handlers of actions
+  switch($action)
+  {
+    // Read all directories for the directory listing
+    // @todo Consider renaming this action, its name is a relic from WebFM 6
+    case 'readtrees':
+      $treeData = new stdClass();
+      $treeData->trees = array();
+      // Build the directory listing from the backend
+      $treeData->trees[0] = $backend->buildWebTree(variable_get('webfm_root',"SITE"));
+      // Invoke webfm_readtrees hook
+      module_invoke_all('webfm_readtrees',$backend,$treeData);
+      $response['tree'] = $treeData->trees;
+      break;
+    // Read all files and directories given a provided root
+    // @Todo Consider renaming this action, its name is a relic from WebFM 6
+    case 'readfiles':
+      // Check that they are questing a valid root, provide a default if not
+      // Look into adding a hook/setting to disable the default root for
+      // modules like WebFM OG
+      if ($param0)
+      {
+         $param0 = trim(webfm_utf8_urldecode($param0));
+         if (preg_match('/\.\./',$param0))
+         {
+            $response['status'] = 'false';
+            $response['err'] = t('Invalid path');
+            break;
+         }
+      }
+      else
+      {
+         $param0 = '/' . variable_get('webfm_root','SITE');
+      }
+      // Ensure that we are requesting a valid directory
+      // @todo Evaluate the usefulness of this function...
+      if (!$backend->pathExists($param0))
+      {
+        $response['status'] = 'false';
+        $response['err'] = t('Directory does not exist');
+        break;
+      }
+      // Set the breadcrumb
+      $response['bcrumb'] = explode('/',substr($param0,1));
+      // Provide details about the root directory
+      // @todo Evaluate if this needs to exist
+      $response['root'] = array('p'=>$param0,'m'=>filemtime(file_default_scheme() . '://' . $param0));
+      // Compose the file/directory data from the backend
+      $response = array_merge($response,$backend->buildFileData($param0));
+      break;
+    // The client uses local caching to minimie data requests
+    // This action provides file modification times to validate/invalidate cache
+    case 'updatecheck':
+      if ($param0)
+      {
+         $param0 = trim(webfm_utf8_urldecode($param0));
+         if (preg_match('/\.\./',$param0))
+         {
+            $response['status'] = 'false';
+            $response['err'] = t('Invalid path');
+            break;
+         }
+      }
+      else
+      {
+         $param0 = '/' . variable_get('webfm_root','SITE');
+      }
+      if (!$backend->pathExists($param0))
+      {
+        $response['status'] = 'false';
+        $response['err'] = t('Directory does not exist');
+        break;
+      }
+      // Return the file modified time and patho
+      $response['root'] = array('p'=>$param0,'m'=>filemtime(file_default_scheme() . '://' . $param0));
+      break;
+    // Details about files, this utilized by the widget
+    // to get details about file attachments
+    case 'fileinfo':
+      if ($param0)
+      {
+         $raw_fids = explode(',',$param0);
+         foreach($raw_fids as $raw_fid)
+         {
+            // Ensure we have what appears to be a valid fid
+            if(intval(trim($raw_fid)) > 0)
+              $fids[] = intval(trim($raw_fid));
+         }
+         // Load the file data
+         $files = file_load_multiple($fids);
+         // Build response
+         foreach ($files as $file)
+         {
+           $path = file_uri_target($file->uri);
+           $pathParts = explode('/',$path);
+           array_pop($pathParts);
+           $path = implode('/',$pathParts);
+           $fdata = webfm_getFileData($file,'/' . $path);
+           $fdata['id'] = $file->fid;
+           $response['files'][] = $fdata; 
+         }
+      }
+      else
+      {
+         $response['status'] = 'false';
+         $response['err'] = t('Invalid request');
+      }  
+      break;
+    default:
+      // Any other actions are dispatched out to the
+      // Action handlers see webfm.handlers.inc
+      dispatchRequest($action,array($param0,$param1,$param2,$param3), $response);
+      break;
+  }
+  // Return information the current directory
+  // @todo This may not currently be used, consider its removal
+  $response['current'] = '/' . variable_get('webfm_root',"SITE");
+  // @todo Evaluate what this is doing if anything
+  $response['admin'] = 'true';
+  // Invoke webfm_json_action_handled hook
+  module_invoke_all('webfm_json_action_handled',$backend,$response,$action,$param0,$param1,$param2,$param3,$param4);
+  // Encode and print the reponse;
+  print json_encode($response);
+  // Exit
+  module_invoke_all('exit');
+  exit();
+}
+/**
+* Handle action request dispatching
+*/
+function dispatchRequest($action, $params, &$response)
+{
+  // Include the action handles file
+  require_once(dirname(__FILE__) . '/webfm.handlers.inc');
+  // Invoke webfm_json_action_dispatch hook
+  module_invoke_all('webfm_json_action_dispatch',$response,$action,$params);
+  // Check for a handler for this action
+  if (function_exists("webfm_ajax_".$action))
+  {
+    call_user_func_array("webfm_ajax_".$action,array($params,&$response));
+  }
+  else
+  {
+    $response['status'] = 'false';
+    $response['err'] = t('Unknown action');
+  }
+}
+/**
+* Helper function for file data reponses
+*/
+function webfm_getFileData($file,$path)
+{
+  $fpieces = explode('.', $file->filename);
+  $ext = array_pop($fpieces);
+  $fdata = array('n' => $file->filename,
+        'f'=>true,
+        'p' => $path,
+        'm'=> filemtime($file->uri),
+        'c'=> filectime($file->uri),
+        'e'=>$ext,
+        's'=>filesize($file->uri));
+  module_invoke_all('webfm_getfiledata',$file,$path,$fdata);
+  return $fdata;
+}
+
+/**
+* Function to remove unnessary CSS files from the browser page
+*/
+function webfm_browser_css() {
+  $css = drupal_add_css();
+
+  if (module_exists('admin_menu')) {
+    $strip = array('admin_menu','admin_menu_toolbar');
+    foreach ($strip as $rem)
+    {
+      $mod_path = drupal_get_path('module',$rem);
+      if (!empty($mod_path))
+      { $rem_items[] = $mod_path;
+      }
+    }
+    foreach (array_keys($css) as $key) {
+      foreach ($rem_items as $i) {
+        if (preg_match('|' . $i . '|', $key)) {
+          unset($css[$k]);
+        }
+      }
+    }
+  }
+  return drupal_get_css($css);
+}
+/**
+* Function to remove unnessary JS from the browser page
+*/
+function webfm_browser_js() {
+
+  $js = drupal_add_js(NULL, array('scope' => 'header'));
+  if (module_exists('admin_menu')) {
+    $strip = array('admin_menu','admin_menu_toolbar');
+    foreach ($strip as $rem)
+    {
+      $mod_path = drupal_get_path('module',$rem);
+      if (!empty($mod_path))
+      { $rem_items[] = $mod_path;
+      }
+    }
+    foreach (array_keys($js) as $key) {
+      foreach ($rem_items as $i) {
+        if (preg_match('|' . $i . '|', $key)) {
+          unset($js[$k]);
+        }
+      }
+    }
+  }
+  return drupal_get_js('header', $js);
+}
+/**
+* Add WebFM Required JS Files
+*/
+function webfm_js()
+{
+  global $base_root;
+  //$js = 'var jQuery17 = jQuery.noConflict(true);
+  $js = 'function getBaseUrl(){return "'.$base_root.'";}';
+  $js .= 'function getWebfmIconDir(){return "'.$base_root.'/'.drupal_get_path('module','webfm').'/image/icon";}';
+  //drupal_add_js(drupal_get_path('module','webfm') . '/js/jquery-1.7.2.js');
+  drupal_add_js(drupal_get_path('module','webfm') . '/js/jquery-ui.js');
+  drupal_add_js(drupal_get_path('module','webfm') . '/js/jquery.contextmenu.js');
+  drupal_add_js($js,'inline');
+  drupal_add_js(drupal_get_path('module','webfm') . '/js/webfm.js');
+  // Invoke webfm_added_js hook
+  module_invoke_all('webfm_added_js');
+}
+
+/**
+* Add WebFM Required CSS Files
+*/
+function webfm_css()
+{
+  drupal_add_css('misc/ui/jquery.ui.core.css');
+  drupal_add_css('misc/ui/jquery.ui.theme.css');
+  drupal_add_css(drupal_get_path('module','webfm') . '/css/jquery.contextmenu.css');
+  drupal_add_css(drupal_get_path('module','webfm') . '/css/webfm.css');
+  drupal_add_css(drupal_get_path('module','webfm') . '/css/jquery-ui.css');
+  // Invoke webfm_added_css hook
+  module_invoke_all('webfm_added_css');
+
+}
+
+/**
+* Webfm settings form
+*/
+function webfm_settings_form($form, &$form_state)
+{
+  $form['webfm'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Manage WebFM'),
+  );
+  $form['webfm']['path'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Path to root directory'),
+    '#description' => t('This directory lives under the set Drupal files directory'),
+    '#default_value' => variable_get('webfm_root',"SITE"),
+    '#required' => TRUE,
+  );
+  $form['webfm']['create_path'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('If directory does not exist create it'),
+  );
+
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array('#type' => 'submit', '#value' => t('Save'));
+
+  return $form;
+
+}
+
+/**
+* Webfm settings form validator
+*/
+function webfm_settings_form_validate($form, &$form_state) {
+  $path = $form_state['values']['path'];
+  if (($path[0] == '/' || $path[0] == '\\') || ($path[strlen($path)-1] == '/' || $path[strlen($path)-1] == '\\'))
+  {
+    form_set_error('path', t("Path should not start or end with a '/' or '\\'"));
+    return;
+  }
+  if (trim($path) == '' || preg_match('/\.\./',$path))
+  {
+    form_set_error('path', t('The specified path is invalid'));
+    return;
+  }
+  $query_path = file_default_scheme() . '://' . $path;
+
+  if ($form_state['values']['create_path'] == false)
+  {
+    if (!is_dir($query_path))
+    {
+      form_set_error('path', t('The directory does not exist'));
+      return;
+    }
+  }
+}
+
+/**
+* Webfm settings form submission handler
+*/
+function webfm_settings_form_submit($form, &$form_state) {
+  $path = $form_state['values']['path'];
+  $query_path = file_default_scheme() . '://' . $path;
+
+  if (!is_dir($query_path) && $form_state['values']['create_path'])
+  {
+    if (!file_prepare_directory($query_path,FILE_CREATE_DIRECTORY))
+    {
+      form_set_error('path', t('Could not create directory'));
+      return;
+    }
+  }
+  variable_set('webfm_root',$path);
+  drupal_set_message(t('WebFM Settings have been saved'));
+}

@@ -1,0 +1,7 @@
+name = WebFM Local File Management
+description = Provides local file management functionality for WebFM
+core = 7.x
+package = "WebFM"
+dependencies[] = webfm 
+
+

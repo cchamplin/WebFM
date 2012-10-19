@@ -1,0 +1,57 @@
+<?php
+
+function webfm_schema() {
+
+  $schema['webfm_dir'] = array(
+   'description' => 'WebFM Directory Records',
+   'fields' => array(
+     'did' => array(
+       'description'=>'Directory id, primary identifier for directories',
+       'type' => 'serial',
+       'unsigned' => TRUE,
+       'not null' => TRUE,
+      ),
+     'path' => array(
+       'description' => 'The URI of the directory record',
+       'type' => 'varchar',
+       'length' => 255,
+       'not null' => TRUE,
+       'default' => '',
+     ),
+     'uid' => array(
+       'description' => 'The {users}.uid reference to the directory owner',
+       'type' => 'int',
+       'unsigned' => TRUE,
+       'not null' => TRUE,
+       'default' => 0,
+     ),
+   ),
+   'indexes' => array(
+    'path' => array('path'),
+   ),
+   'primary key' => array('did'),
+  );
+  $schema['webfm_file'] = array(
+   'description' => 'WebFM File Records',
+   'fields' => array(
+     'fid' => array(
+       'description'=>'The {file_managed}.fid reference for the file',
+       'type' => 'int',
+       'unsigned' => TRUE,
+       'not null' => TRUE,
+       'default' => 0,
+      ),
+     'modified' => array(
+       'description' => 'The last modified time of the file',
+       'type' => 'int',
+       'unsigned' => TRUE,
+       'not null' => TRUE,
+       'default' => 0,
+     )
+   ),
+   'unique keys' => array(
+    'file' => array('fid'),
+   ),
+  );
+  return $schema;
+}
