@@ -13,5 +13,5 @@
   [<a href="/admin/help/webfm">more help...</a>]
 </div>
 <noscript><p class="err">JavaScript must be enabled in order to use webfm!</p></noscript>
-<div id="webfm" data-max-attachments="<?php echo $max_attachments;?>">
+<div id="webfm" <?php if (isset($max_attachments)) { echo 'data-max-attachments="' . $max_attachments . '"'; }?>>
 </div>
