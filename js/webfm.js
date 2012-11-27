@@ -245,6 +245,8 @@ Webfm.icons = {
   Webfm.fCache.prototype.findDir = function(directory)
   {
     var pathText = directory.substring(1);
+    if (pathText == '/')
+      return this.root;
     var fullPath = pathText.split('/');
     //fullPath.shift();
     return this.root.findDirectory(fullPath);
@@ -408,13 +410,23 @@ Webfm.icons = {
       for (var didx in this.directories)
       {
         var d = this.directories[didx];
-        if (d.name == dirDirectory.n)
+        if (d.name == dirDirectory.n || d.name == searchDir)
         {
-          this.directories[didx] = new Webfm.fCache.dirRecord(dirDirectory.n,dirDirectory.m);
+          if (dirDirectory.n)
+            this.directories[didx] = new Webfm.fCache.dirRecord(dirDirectory.n,dirDirectory.m);
+          else
+            this.directories[didx] = new Webfm.fCache.dirRecord(searchDir,dirDirectory.m);
           return;
         }
       }
-      this.directories.push(new Webfm.fCache.dirRecord(dirDirectory.n,dirDirectory.m));
+      if (dirDirectory.n)
+      {
+        this.directories.push(new Webfm.fCache.dirRecord(dirDirectory.n,dirDirectory.m));
+      }
+      else
+      {
+        this.directories.push(new Webfm.fCache.dirRecord(searchDir,dirDirectory.m));
+      }
     }
     else if (Webfm.debug)
     {
@@ -480,16 +492,12 @@ Webfm.icons = {
         }
       }
     }
-    if (fullPath.length == 0)
-    {
-      return dj;
-    }
-    else
-    {
+    //else
+    //{
       if (Webfm.debug)
         console.log("Failed to find directory");
       return null;
-    }
+    //}
     //TODO Asserts
   }
   /*************************
@@ -549,6 +557,9 @@ Webfm.icons = {
   }
   Webfm.fileManager.prototype.dataCallback = function (result, obj)
   {
+    var tDir = obj.fileCache.findDir(result.root.p);
+    if (!tDir)
+      obj.fileCache.addDirectory(result.root);
     obj.ui.populateFileManager(result,obj);
     obj.fileCache.updateDirectory(result.root);
     obj.dataRefreshCallback(result,obj);
@@ -755,6 +766,9 @@ Webfm.icons = {
   Webfm.fileManager.prototype.dataRefreshCallback = function(result, obj)
   {
     obj.fileContainer.children().remove();
+    var tDir = obj.fileCache.findDir(result.root.p)
+    if (!tDir)
+      obj.fileCache.addDirectory(result.root);
     obj.ui.buildDirectoryRows(obj.fileContainer,result.dirs,obj);
     obj.ui.buildFileRows(obj.fileContainer,result.files,obj);
     $.webfm_sort(obj.fileContainer,1);
