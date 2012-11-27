@@ -1,14 +1,13 @@
 <?php
 /**
-* @file
-* WebFM Widget/Field for nodes etc
-*/
+ * @file
+ * WebFM Widget/Field for nodes etc
+ */
 
 /**
-* Implements hook_field_widget_info().
-*/
-function webfm_field_widget_info()
-{
+ * Implements hook_field_widget_info().
+ */
+function webfm_field_widget_info() {
   return array(
     'file_webfm' => array(
       'label' => t('WebFM File Attachment'),
@@ -23,22 +22,24 @@ function webfm_field_widget_info()
   );
 }
 /**
-* Implements hook_form_FORM_ID_alter().
-*/
-function webfm_form_field_ui_field_settings_form_alter(&$form,&$form_state,$form_id)
-{
+ * Implements hook_form_FORM_ID_alter().
+ */
+function webfm_form_field_ui_field_settings_form_alter(&$form, &$form_state, $form_id) {
   // Remove fields that we don't need or want
-  if ($form['#instance']['widget']['type'] == 'file_webfm')
-    unset($form['field']['settings']['uri_scheme']);
+  if ($form['field']['type']['#value'] == 'file') {
+    $instance = field_read_instance($form['#entity_type'], $form['field']['field_name']['#value'], $form['#bundle']);
+    if ($instance['widget']['type'] == 'file_webfm') {
+      unset($form['field']['settings']['uri_scheme']);
+    }
+  }
 }
 
 /**
-* Implements hook_form_FORM_ID_alter().
-*/
+ * Implements hook_form_FORM_ID_alter().
+ */
 function webfm_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_id) {
   // Remove fields that we don't need or want
-  if ($form['#instance']['widget']['type'] == 'file_webfm')
-  {
+  if ($form['#instance']['widget']['type'] == 'file_webfm') {
     unset($form['instance']['settings']['file_directory']);
     unset($form['instance']['settings']['description_field']);
     unset($form['instance']['settings']['token_tree']);
@@ -49,12 +50,11 @@ function webfm_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_i
 }
 
 /**
-* Implements hook_field_attach_submit().
-*
-* @todo Provide documentation for what we are doing here
-*/
-function webfm_field_attach_submit($entity_type,$entity,&$form,&$form_state)
-{
+ * Implements hook_field_attach_submit().
+ *
+ * @todo Provide documentation for what we are doing here
+ */
+function webfm_field_attach_submit($entity_type, $entity, &$form, &$form_state) {
   // Merge default options.
   $options = array(
     'default' => FALSE,
@@ -73,29 +73,23 @@ function webfm_field_attach_submit($entity_type,$entity,&$form,&$form_state)
     // field_info_field_by_id().
     $field = field_info_field_by_id($instance['field_id']);
     $field_name = $field['field_name'];
-    if ($field['type'] == 'file')
-    {
+    if ($field['type'] == 'file') {
       $items = array();
       //Determine if we are dealing with a webfm field and take special measures if so
       $available_languages = field_available_languages($entity_type, $field);
       $languages = _field_language_suggestion($available_languages, $options['language'], $field_name);
       foreach ($languages as $langcode) {
-        if ($entity->{$field_name}[$langcode] === array())
-        {
+        if ($entity->{$field_name}[$langcode] === array()) {
           $path = array_merge($form['#parents'], array($field_name, $langcode));
           $key_exists = NULL;
           $values = drupal_array_get_nested_value($form_state['values'], $path, $key_exists);
-          $webfm_flagged = false;
-          foreach ($values as $key => $value_item)
-          {
-            if (!empty($value_item['webfm_attached']))
-            {
-              $webfm_flagged = true;
-              foreach ($value_item['webfm_attached'] as $fid)
-              {
-                if ($fid > 0)
-                {
-                  $items[] = array('fid'=>$fid,'display' => !empty($field['settings']['display_default']),
+          $webfm_flagged = FALSE;
+          foreach ($values as $key => $value_item) {
+            if (!empty($value_item['webfm_attached'])) {
+              $webfm_flagged = TRUE;
+              foreach ($value_item['webfm_attached'] as $fid) {
+                if ($fid > 0) {
+                  $items[] = array('fid' => $fid, 'display' => !empty($field['settings']['display_default']) ? 1 : 0,
                   'description' => '');
                 }
               }
@@ -110,16 +104,15 @@ function webfm_field_attach_submit($entity_type,$entity,&$form,&$form_state)
 }
 
 /**
-* Implements hook_field_widget_form().
-*/
-function webfm_field_widget_form(&$form,&$form_state,$field,$instance,$langcode,$items,$delta,$element)
-{
+ * Implements hook_field_widget_form().
+ */
+function webfm_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
   $defaults = array(
     'display' => !empty($field['settings']['display_default']),
     'description' => '',
     'file_data_process' => array(),
   );
- $field_state = field_form_get_state($element['#field_parents'], $field['field_name'], $langcode, $form_state);
+  $field_state = field_form_get_state($element['#field_parents'], $field['field_name'], $langcode, $form_state);
   if (isset($field_state['items'])) {
     $items = $field_state['items'];
   }
@@ -128,10 +121,11 @@ function webfm_field_widget_form(&$form,&$form_state,$field,$instance,$langcode,
   $form['#attributes']['class'][] = 'webfm-uploader-form';
   $element += array(
     '#type' => 'webfm_managed_file',
-    '#default_value' => (count($items) > 0) ? array('webfm_attached'=>$items) : $defaults,
+    '#default_value' => (count($items) > 0) ? array('webfm_attached' => $items) : $defaults,
     '#extended' => TRUE,
-    '#value_callback' => 'webfm_field_widget_value',//$element_info['#value_callback'],
-    '#process' => array_merge($element_info['#process'], array('webfm_field_widget_primary_process')), 
+    '#cardinality' => $field['cardinality'],
+    '#value_callback' => 'webfm_field_widget_value', //$element_info['#value_callback'],
+    '#process' => array_merge($element_info['#process'], array('webfm_field_widget_primary_process')),
    // '#attached' => $element_info['#attached'],
   );
 
@@ -141,33 +135,29 @@ function webfm_field_widget_form(&$form,&$form_state,$field,$instance,$langcode,
 }
 
 /**
-* Function for widget processing.
-*
-* @todo provide documentation for this function
-*/
-function webfm_field_widget_primary_process($element,&$form_state,$form)
-{
+ * Function for widget processing.
+ *
+ * @todo provide documentation for this function
+ */
+function webfm_field_widget_primary_process($element, &$form_state, $form) {
   // Make sure we include js
   webfm_js();
   webfm_css();
-  $webfm_markup = theme('webfm-documents',array());
+  $webfm_markup = theme('webfm-documents', array('max_attachments' => $element['#cardinality']));
   $element['#prefix'] = $webfm_markup;
   $default_attached  = array();
-  if (count($element['#value']['webfm_attached']) <= 0)
-  {
-     $element['webfm_attachments'] = array(
-      '#type'=>'hidden',
-      '#default_value'=> '',
+  if (count($element['#value']['webfm_attached']) <= 0) {
+    $element['webfm_attachments'] = array(
+      '#type' => 'hidden',
+      '#default_value' => '',
       '#process' => array('webfm_field_widget_process'),
-      );
+    );
   }
-  else
-  {
-    foreach ($element['#value']['webfm_attached'] as $file)
-    {
-     $element['webfm_attachments'][] = array(
-      '#type'=>'hidden',
-      '#default_value'=> $file['fid'],
+  else {
+    foreach ($element['#value']['webfm_attached'] as $file) {
+      $element['webfm_attachments'][] = array(
+        '#type' => 'hidden',
+        '#default_value' => $file['fid'],
       );
     }
   }
@@ -176,10 +166,10 @@ function webfm_field_widget_primary_process($element,&$form_state,$form)
 
 
 /**
-* Function for widget value.
-*/
+ * Function for widget value.
+ */
 function webfm_field_widget_value($element, $input = FALSE, &$form_state) {
-if ($input) {
+  if ($input) {
     // Checkboxes lose their value when empty.
     // If the display field is present make sure its unchecked value is saved.
     $field = field_widget_field($element, $form_state);
@@ -190,18 +180,14 @@ if ($input) {
 
   // We depend on the managed file element to handle uploads.
   $return = webfm_managed_file_value($element, $input, $form_state);
-  if ($input)
-  {
-    if (isset($input['webfm_attachments']) && is_array($input['webfm_attachments']) && count($input['webfm_attachments']) > 0)
-    {
-      foreach ($input['webfm_attachments'] as $fid)
-      {
+  if ($input) {
+    if (isset($input['webfm_attachments']) && is_array($input['webfm_attachments']) && count($input['webfm_attachments']) > 0) {
+      foreach ($input['webfm_attachments'] as $fid) {
         $return['webfm_attached'][] = intval($fid);
       }
     }
   }
-  else
-  {
+  else {
     $return['webfm_attached'] = isset($element['#default_value']['webfm_attached']) ? $element['#default_value']['webfm_attached'] : array();
   }
 
@@ -209,12 +195,24 @@ if ($input) {
     'webfm_attached' => array(),
   );
 
+  $attachedcount = 0;
+  foreach ($return['webfm_attached'] as $fid) {
+    if ($fid > 0)
+      $attachedcount++;
+  }
+
+  if ($element['#cardinality'] >= 0 && $attachedcount > $element['#cardinality'])
+    form_error($element, t('You have exceeded the maximum number of attachments'));
+
+  if ($element['#required'] && $attachedcount < 1)
+    form_error($element, t('You must attach atleast one file'));
+
   return $return;
 }
 
 /**
-* Function field widget process.
-*/
+ * Function field widget process.
+ */
 function webfm_field_widget_process($element, &$form_state, $form) {
   $element['#limit_validation_errors'] = array(array_slice($element['#parents'], 0, -1));
   $element['#name'] .= '[]';
@@ -222,10 +220,10 @@ function webfm_field_widget_process($element, &$form_state, $form) {
 }
 
 /**
-* Field Widget Settings Form.
-*/
+ * Field Widget Settings Form.
+ */
 function webfm_field_widget_settings_form($field, $instance) {
-  $form =array();
+  $form = array();
   $widget = $instance['widget'];
   $settings = $widget['settings'];
 
@@ -234,8 +232,8 @@ function webfm_field_widget_settings_form($field, $instance) {
 }
 
 /**
-* Submit handler for field widget.
-*/
+ * Submit handler for field widget.
+ */
 function webfm_field_widget_submit($form, &$form_state) {
   // During the form rebuild, file_field_widget_form() will create field item
   // widget elements using re-indexed deltas, so clear out $form_state['input']

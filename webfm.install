@@ -1,57 +1,116 @@
 <?php
+/**
+ * @file
+ * WebFM Module Installation
+ */
 
 function webfm_schema() {
-
   $schema['webfm_dir'] = array(
-   'description' => 'WebFM Directory Records',
-   'fields' => array(
-     'did' => array(
-       'description'=>'Directory id, primary identifier for directories',
-       'type' => 'serial',
-       'unsigned' => TRUE,
-       'not null' => TRUE,
+    'description' => 'WebFM Directory Records',
+    'fields' => array(
+      'did' => array(
+        'description' => 'Directory id, primary identifier for directories',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
       ),
-     'path' => array(
-       'description' => 'The URI of the directory record',
-       'type' => 'varchar',
-       'length' => 255,
-       'not null' => TRUE,
-       'default' => '',
-     ),
-     'uid' => array(
-       'description' => 'The {users}.uid reference to the directory owner',
-       'type' => 'int',
-       'unsigned' => TRUE,
-       'not null' => TRUE,
-       'default' => 0,
-     ),
-   ),
-   'indexes' => array(
-    'path' => array('path'),
-   ),
-   'primary key' => array('did'),
+      'path' => array(
+        'description' => 'The URI of the directory record',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid reference to the directory owner',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+     'path' => array('path'),
+    ),
+    'primary key' => array('did'),
   );
   $schema['webfm_file'] = array(
-   'description' => 'WebFM File Records',
-   'fields' => array(
-     'fid' => array(
-       'description'=>'The {file_managed}.fid reference for the file',
-       'type' => 'int',
-       'unsigned' => TRUE,
-       'not null' => TRUE,
-       'default' => 0,
+    'description' => 'WebFM File Records',
+    'fields' => array(
+      'fid' => array(
+        'description' => 'The {file_managed}.fid reference for the file',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
       ),
-     'modified' => array(
-       'description' => 'The last modified time of the file',
-       'type' => 'int',
-       'unsigned' => TRUE,
-       'not null' => TRUE,
-       'default' => 0,
-     )
-   ),
-   'unique keys' => array(
-    'file' => array('fid'),
-   ),
+      'modified' => array(
+        'description' => 'The last modified time of the file',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'unique keys' => array(
+     'file' => array('fid'),
+    ),
   );
   return $schema;
+}
+
+
+function webfm_requirements($phase) {
+  $requirements = array();
+  if ($phase == 'runtime') {
+    // Include the file backend class definition
+    require_once(dirname(__FILE__) . '/webfm.filebackend.inc');
+    module_invoke_all('webfm_register_backend');
+    $backend = webfm_get_active_backend();
+
+    $uploaders = array();
+    foreach (module_implements('webfm_register_uploader') as $module) {
+      $uploaders[] =  module_invoke($module, 'webfm_register_uploader');
+    }
+    $requirements['webfm_file_backend'] = array(
+      'title' => t('WebFM File Backend'),
+      'value' => NULL,
+    );
+    $requirements['webfm_jquery_17'] = array(
+      'title' => t('WebFM jQuery 1.7 Status'),
+      'value' => 'Up to date',
+    );
+    $requirements['webfm_uploader'] = array(
+      'title' => t('WebFM File Uploader'),
+      'value' => NULL,
+    );
+    if ($backend == NULL) {
+      $requirements['webfm_file_backend']['description'] = t('WebFM is missing a file backend. Please enable the default WebFM Local File Management or install an alternative');
+      $requirements['webfm_file_backend']['severity'] = REQUIREMENT_ERROR;
+    }
+    else {
+      $requirements['webfm_file_backend']['value'] = $backend->getName();
+      $requirements['webfm_file_backend']['severity'] = REQUIREMENT_OK;
+    }
+    if (count($uploaders) == 0) {
+      $requirements['webfm_uploader']['description'] = t('A suitable WebFM file upload module was not detected, please enable one. The default is the Webfm jQuery Upload module');
+      $requirements['webfm_uploader']['severity'] = REQUIREMENT_ERROR;
+    }
+    elseif (count($uploaders) > 1) {
+      $requirements['webfm_uploader']['description'] = t('Multiple Webfm file upload modules were detected, please disable all but one. Multiple file upload modules can produce undefined results');
+      $requirements['webfm_uploader']['severity'] = REQUIREMENT_ERROR;
+    }
+    else {
+      $requirements['webfm_uploader']['severity'] = REQUIREMENT_OK;
+      $requirements['webfm_uploader']['value'] = $uploaders[0];
+    }
+
+    $requirements['webfm_jquery_17']['severity'] = REQUIREMENT_OK;
+    if (version_compare(variable_get('jquery_update_jquery_version', '1.5'), '1.7')  < 0) {
+      $requirements['webfm_jquery_17']['severity'] = REQUIREMENT_ERROR;
+      $requirements['webfm_jquery_17']['value'] = 'Out of date';
+      $requirements['webfm_jquery_17']['description'] = t('WebFM requires jQuery version 1.7 or greater, please install and configure the jquery_update module');
+    }
+  }
+  return $requirements;
 }

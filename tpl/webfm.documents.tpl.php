@@ -1,3 +1,10 @@
+<?php
+/**
+ * @file
+ * WebFM Documents Template
+ */
+
+?>
 <div class="more-help-link">
   <div class="description">
    Right-click (Opera: Alt+Left) on files or folders opens the context menu.
@@ -6,5 +13,5 @@
   [<a href="/admin/help/webfm">more help...</a>]
 </div>
 <noscript><p class="err">JavaScript must be enabled in order to use webfm!</p></noscript>
-<div id="webfm">
+<div id="webfm" data-max-attachments="<?php echo $max_attachments;?>">
 </div>
