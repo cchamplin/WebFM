@@ -534,7 +534,7 @@ Webfm.icons = {
 
     tForm.append(tList);
     tSubmit = $('<input type="button"/>').addClass('conflict-button').val(Webfm.lang.submit);
-    tSubmit.on('click', function (event) { obj.ui.handleConflictClick(event,fid,filename,dest,obj); });
+    tSubmit.on('click', function (event) { obj.ui.handleConflictClick(event,$(this),fid,filename,dest,obj); });
     tForm.append(tSubmit);
     
     conflictResolver.append(tForm);
@@ -674,10 +674,10 @@ Webfm.icons = {
       },
       
       helper: function(event) { 
-        var owidth = $(event.target).closest('table').css('width');
+        var owidth = $(this).closest('table').css('width');
         var tDiv =$('<div></div>').addClass('drag-container').css({'z-index':'9999'});
         var tTbl = $("<table></table>").css('width',owidth)
-          .append($(event.target).closest('tr').clone());
+          .append($(this).closest('tr').clone());
         tDiv.append(tTbl);
         return tDiv;
       },
@@ -1026,14 +1026,14 @@ Webfm.icons = {
     for (var fidx in files)
     {
       elTr = $('<tr></tr>').attr({id : 'webfm-file'+fidx, 'title' : dir + '/' + files[fidx].name}).addClass('filerow');
-      elTr.attr({'data-fid':files[fidx].id});
+      elTr.attr({'data-fid':files[fidx].fid});
       elTd = $('<td></td>');
       if (files[fidx].ext && files[fidx].ext != "")
         elIcon = $('<img />').attr({'src' : getWebfmIconDir() + '/'+Webfm.icons['e'+files[fidx].ext]+'.gif', alt : Webfm.lang.file});
       else
         elIcon = $('<img />').attr({'src' : getWebfmIconDir() + '/f.gif', alt : Webfm.lang.file});
       elLink = $('<a></a>').attr({'href' : '#', 'title' : dir + '/' + files[fidx].name}).text(files[fidx].name);
-      elLink.attr({'data-fid':files[fidx].id});
+      elLink.attr({'data-fid':files[fidx].fid});
       elLink.attr({'data-fsize':files[fidx].size});
       elTd.append(elIcon);
       elTr.append(elTd);
@@ -1125,7 +1125,6 @@ Webfm.icons = {
   }
   Webfm.fileManager.ui.prototype.handleItemDrop = function (event, targetObj, ui, obj)
   {
-    console.log(targetObj);
     var target = "";
     if (targetObj.title)
     {
@@ -1138,14 +1137,10 @@ Webfm.icons = {
     var source = ui.draggable[0].title;
     if ($(ui.draggable[0]).hasClass('filerow'))
     {
-      console.log(source);
-      console.log(target);
       obj.moveFile(source,target);
     }
     else
     {
-      console.log(source);
-      console.log(target);
       Webfm.confirmation.show('Confirm move',Webfm.lang.confirm_move_directory,'Move',obj.ui.handleConfirmMoveDirectory,[source,target],obj)
     }
   }
@@ -1174,27 +1169,30 @@ Webfm.icons = {
     var obj = event.data;
     Webfm.dataRequest('updatecheck', function(data,ob) { obj.dataUpdateCheckCallback(data,ob); }, obj, obj.currentDirectoryPath);
   }
-  Webfm.fileManager.ui.prototype.handleConfirmConflictRenameFile = function(data,input,obj,target)
+  Webfm.fileManager.ui.prototype.handleConfirmConflictRenameFile = function(data,input,obj)
   {
     var action = data[0];
     var fid = data[1];
     var name = data[2];
     var dest = data[3];
+    var target = data[4];
     if (action == 'rename_new')
     {
       Webfm.dataRequest('resolveconflict', function(data,ob) { obj.dataConflictResolutionCallback(data,ob,target,fid); }, obj, fid, dest, input);
     }
     else
     {
-      Webfm.dataRequest('renamefile', function(data,ob) { obj.renameCallback(data,ob); }, obj, dest + '/' + name, input);
-      Webfm.dataRequest('resolveconflict', function(data,ob) { obj.dataConflictResolutionCallback(data,ob,target,fid); }, obj, fid, dest, name);
+      var secondaryAction = function () {
+        Webfm.dataRequest('resolveconflict', function(data,ob) { obj.dataConflictResolutionCallback(data,ob,target,fid); }, obj, fid, dest, name);
+      } 
+      Webfm.dataRequest('renamefile', function(data,ob) { obj.renameCallback(data,ob); secondaryAction(); }, obj, dest + '/' + name, input);
     }
   }
 
-  Webfm.fileManager.ui.prototype.handleConflictClick = function(event,fid,name,dest,obj)
+  Webfm.fileManager.ui.prototype.handleConflictClick = function(event,target,fid,name,dest,obj)
   {
     Webfm.error.hide();
-    var selected = $(event.target).parent().find('.conflict-choice').filter(':checked');
+    var selected = target.parent().find('.conflict-choice').filter(':checked');
     if (selected.length > 0)
     {
       var action = selected.val();
@@ -1203,16 +1201,16 @@ Webfm.icons = {
         switch (action)
         {
           case 'cancel':
-            Webfm.dataRequest('cancelupload', function(data,ob) { $(event.target).parent().trigger('resolved',fid); }, obj, fid);
+            Webfm.dataRequest('cancelupload', function(data,ob) { target.parent().trigger('resolved',fid); }, obj, fid);
             break;
           case 'rename_existing':
-             Webfm.confirmation.prompt(Webfm.lang.file_rename,Webfm.lang.conflict_cofirm_rename_existing,Webfm.lang.rename,obj.ui.handleConfirmConflictRenameFile,[action,fid,name,dest,$(event.target).parent()],obj)
+             Webfm.confirmation.prompt(Webfm.lang.file_rename,Webfm.lang.conflict_cofirm_rename_existing,Webfm.lang.rename,obj.ui.handleConfirmConflictRenameFile,[action,fid,name,dest,target.parent()],obj)
             break;
           case 'rename_new':
-             Webfm.confirmation.prompt(Webfm.lang.file_rename,Webfm.lang.conflict_cofirm_rename_new,Webfm.lang.rename,obj.ui.handleConfirmConflictRenameFile,[action,fid,name,dest,$(event.target).parent()],obj)
+             Webfm.confirmation.prompt(Webfm.lang.file_rename,Webfm.lang.conflict_cofirm_rename_new,Webfm.lang.rename,obj.ui.handleConfirmConflictRenameFile,[action,fid,name,dest,target.parent()],obj)
             break;
           case 'overwrite':      
-            Webfm.dataRequest('resolveconflict', function(data,ob) { obj.dataConflictResolutionCallback(data,ob,$(event.target).parent(),fid); }, obj, fid, dest, name, 'overwrite');
+            Webfm.dataRequest('resolveconflict', function(data,ob) { obj.dataConflictResolutionCallback(data,ob,target.parent(),fid); }, obj, fid, dest, name, 'overwrite');
             break;
         }
       }
