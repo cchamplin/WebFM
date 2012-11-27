@@ -143,6 +143,7 @@ Webfm.icons = {
   }
   Webfm.handleAttachments = function()
   {
+    var maxAttachments = Webfm.elements.container.data('max-attachments');
     var fParent = Webfm.elements.container.parents('form');
     if (fParent && fParent.length > 0)
     {
@@ -157,7 +158,7 @@ Webfm.icons = {
               nm.pop();
               n = nm.join('][') + ']';
               if (Webfm.data.attachments == null)
-                Webfm.data.attachments = new Webfm.attachments(n);
+                Webfm.data.attachments = new Webfm.attachments(n, maxAttachments);
             }
           }
        );
@@ -1291,7 +1292,6 @@ Webfm.icons = {
   Webfm.fileManager.ui.prototype.handleFileAttachClick = function(event)
   {
     var obj = event.data;
-    console.log($(this).parents('tr'));
     obj.attachFile($(this).data('fid'),$(this).text(),$(this).data('fsize'));
     event.preventDefault();
     event.stopPropagation();
@@ -1504,9 +1504,10 @@ Webfm.icons = {
 
 
 
-  Webfm.attachments = function(name)
+  Webfm.attachments = function(name, max)
   {
     var obj = this;
+    this.maxAttachments = max;
     this.inputName = name;
     var reqFids = '';
     var elTable = $('<table></table>').attr({'id':'attachment-data-table'});
@@ -1586,6 +1587,9 @@ Webfm.icons = {
   }
   Webfm.attachments.prototype.add = function(fid,filename,filesize)
   {
+    var curAttachments = this.attachmentTable.find('tr').length;
+    if (this.maxAttachments > 0 && curAttachments >= this.maxAttachments)
+      return;
     var elTR = this.makeRow(fid);
     elTR.children('.attachment-file-name').text(filename);
     elTR.children('.attachment-file-size').text(Webfm.size(parseInt(filesize)));
