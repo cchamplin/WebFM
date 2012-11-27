@@ -131,7 +131,10 @@ Webfm.icons = {
   function webfmInit()
   {
     if (Webfm.debug)
+    {
       console.log("Init");
+      console.log("Basepath: " + Drupal.settings.basePath);
+    }
     //Locate container
     Webfm.elements.container = $("#webfm");
     Webfm.loadInterface();
@@ -1099,11 +1102,11 @@ Webfm.icons = {
   }
   Webfm.fileManager.ui.prototype.initiateDownload = function(item,obj)
   {
-    $.downloadFile('/webfm/'+item.data('fid'));
+    $.downloadFile(Drupal.settings.basePath + 'webfm/'+item.data('fid'));
   }
   Webfm.fileManager.ui.prototype.initiateView = function(item,obj)
   {
-    $.viewFile('/webfm/'+item.data('fid')+'/view');
+    $.viewFile(Drupal.settings.basePath + 'webfm/'+item.data('fid')+'/view');
   }
   Webfm.fileManager.ui.prototype.handleItemDrop = function (event, targetObj, ui, obj)
   {
@@ -1296,7 +1299,7 @@ Webfm.icons = {
   Webfm.fileManager.ui.prototype.handleBrowserFileClick = function(event)
   {
     var obj = event.data;
-    window.opener.CKEDITOR.tools.callFunction($.getURLParameter('CKEditorFuncNum'),'/webfm/'+$(this).data('fid'));
+    window.opener.CKEDITOR.tools.callFunction($.getURLParameter('CKEditorFuncNum'),Drupal.settings.basePath + 'webfm/'+$(this).data('fid'));
     event.preventDefault();
     event.stopPropagation();
     window.close();
@@ -1625,7 +1628,7 @@ Webfm.icons = {
     param2 = (typeof param2 == 'undefined') ? null : param2;
     param3 = (typeof param3 == 'undefined') ? null : param3;
     param4 = (typeof param4 == 'undefined') ? null : param4;
-    var url = getBaseUrl() + "/webfm_js";
+    var url = Drupal.settings.basePath + "webfm_js";
     var obj = new Object();
     obj.action = act;
     if (param0 != null)
