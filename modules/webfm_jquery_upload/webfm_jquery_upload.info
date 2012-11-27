@@ -1,0 +1,6 @@
+name = WebFM jQuery File Uploader
+description = jQuery File Uploader for WebFM
+core = 7.x
+package = "WebFM"
+dependencies[] = webfm
+

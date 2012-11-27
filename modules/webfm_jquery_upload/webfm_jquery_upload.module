@@ -1,0 +1,396 @@
+<?php
+/**
+ * @file
+ * Webfm jQuery Upload Module
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function webfm_jquery_upload_menu() {
+  $items = array();
+  $items['webfm_file/ajax'] = array(
+    'page callback' => 'webfm_jquery_upload_ajax_upload',
+    'delivery callback' => 'webfm_jquery_upload_ajax_deliver',
+    'access arguments' => array('create webfm file'),
+    'theme callback' => 'ajax_base_page_theme',
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_webfm_register_uploader().
+ */
+function webfm_jquery_upload_webfm_register_uploader() {
+  return 'WebFM jQuery Upload';
+}
+
+function webfm_jquery_upload_ajax_upload() {
+  $form_parents = func_get_args();
+  $form_build_id = (string) array_pop($form_parents);
+  if (empty($_POST['form_build_id']) || $form_build_id != $_POST['form_build_id']) {
+    // Invalid request.
+    $commands = array();
+    $commands[] = ajax_command_replace(NULL, 'Invalid request');
+    return array('#type' => 'ajax', '#commands' => $commands);
+  }
+  list($form, $form_state) = ajax_get_form();
+  if (!$form) {
+    // Invalid form_build_id.
+    drupal_set_message(t('Form expired.'), 'error');
+    $commands = array();
+    $commands[] = ajax_command_replace(NULL, theme('status_messages'));
+    return array('#type' => 'ajax', '#commands' => $commands);
+  }
+  // Process user input. $form and $form_state are modified in the process.
+  $form_state['programmed'] = TRUE;
+  drupal_process_form($form['#form_id'], $form, $form_state);
+
+  $ap = $form_state['triggering_element']['#array_parents'];
+  //This should leverage ['und'][index][value]
+  //Instead of this hack
+  $x = 0;
+  $ret_values =& $form_state['values'][$ap[0]];
+  while ($x++ < count($ap) - 2) {
+    $ret_values =& $ret_values[$ap[$x]];
+  }
+  if (!empty($ret_values) && count($ret_values) > 0) {
+    return $ret_values;
+  }
+  else {
+    drupal_set_message(t('An unexpected failure occured'), 'error');
+    $commands = array();
+    $commands[] = ajax_command_replace(NULL, theme('status_messages'));
+    return array('#type' => 'ajax', '#commands' => $commands);
+  }
+}
+function webfm_jquery_upload_ajax_deliver($page_callback_result) {
+  // Browsers do not allow JavaScript to read the contents of a user's local
+  // files. To work around that, the jQuery Form plugin submits forms containing
+  // a file input element to an IFRAME, instead of using XHR. Browsers do not
+  // normally expect JSON strings as content within an IFRAME, so the response
+  // must be customized accordingly.
+  // @see http://malsup.com/jquery/form/#file-upload
+  // @see Drupal.ajax.prototype.beforeSend()
+  $iframe_upload = !empty($_POST['ajax_iframe_upload']);
+
+  // Emit a Content-Type HTTP header if none has been added by the page callback
+  // or by a wrapping delivery callback.
+  if (is_null(drupal_get_http_header('Content-Type'))) {
+    if (!$iframe_upload) {
+      // Standard JSON can be returned to a browser's XHR object, and to
+      // non-browser user agents.
+      // @see http://www.ietf.org/rfc/rfc4627.txt?number=4627
+      drupal_add_http_header('Content-Type', 'application/json; charset=utf-8');
+    }
+    else {
+      // Browser IFRAMEs expect HTML. With most other content types, Internet
+      // Explorer presents the user with a download prompt.
+      drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
+    }
+  }
+
+  // Print the response.
+  //$commands = ajax_prepare_response($page_callback_result);
+  //$json = ajax_render($commands);
+
+  $json = drupal_json_encode($page_callback_result);
+  if (!$iframe_upload) {
+    // Standard JSON can be returned to a browser's XHR object, and to
+    // non-browser user agents.
+    print $json;
+  }
+  else {
+    // Browser IFRAMEs expect HTML. Browser extensions, such as Linkification
+    // and Skype's Browser Highlighter, convert URLs, phone numbers, etc. into
+    // links. This corrupts the JSON response. Protect the integrity of the
+    // JSON data by making it the value of a textarea.
+    // @see http://malsup.com/jquery/form/#file-upload
+    // @see http://drupal.org/node/1009382
+    print '<textarea>' . $json . '</textarea>';
+  }
+
+  // Perform end-of-request tasks.
+  ajax_footer();
+}
+
+function webfm_jquery_upload_element_info() {
+  $file_path = drupal_get_path('module', 'file');
+  $webfm_path = drupal_get_path('module', 'webfm_jquery_upload');
+  $types['webfm_managed_file'] = array(
+    '#input' => TRUE,
+    '#process' => array('webfm_managed_file_process'),
+    '#value_callback' => 'webfm_managed_file_value',
+    '#element_validate' => array('webfm_managed_file_file_validate'),
+    '#pre_render' => array('file_managed_file_pre_render'),
+    '#theme' => 'file_managed_file',
+    '#theme_wrappers' => array('form_element'),
+    '#progress_indicator' => 'throbber',
+    '#progress_message' => NULL,
+    '#upload_validators' => array(),
+    '#upload_location' => NULL,
+    '#extended' => FALSE,
+    '#size' => 22,
+    '#attached' => array(
+      'css' => array(
+        $webfm_path . '/css/jquery.fileupload-ui.css',
+        $webfm_path . '/css/style.css',
+        $file_path . '/file.css'
+      ),
+      'js' => array(
+        $webfm_path . '/js/tmpl.min.js',
+        $webfm_path . '/js/jquery.iframe-transport.js',
+        $webfm_path . '/js/jquery.fileupload.js',
+        $webfm_path . '/js/jquery.fileupload-ui.js',
+        $webfm_path . '/js/jquery.fileupload-jui.js',
+        $webfm_path . '/js/webfm.jquery.fileupload.js',
+        $webfm_path . '/js/local.js',
+        $file_path . '/file.js'
+      ),
+    ),
+  );
+  return $types;
+
+}
+
+function theme_webfm_jquery_upload($variables) {
+  $element = $variables['element'];
+
+  $attributes = array();
+  if (isset($element['#id'])) {
+    $attributes['id'] = $element['#id'];
+  }
+  if (!empty($element['#attributes']['class'])) {
+    $attributes['class'] = (array) $element['#attributes']['class'];
+  }
+  $attributes['class'][] = 'form-managed-file';
+
+  // This wrapper is required to apply JS behaviors and CSS styling.
+  $output = '';
+  $output .= '<div' . drupal_attributes($attributes) . '>';
+  $output .= drupal_render_children($element);
+  $output .= '</div>';
+  return $output;
+}
+
+function webfm_managed_file_process($element, &$form_state, $form) {
+  $element = file_managed_file_process($element, $form_state, $form);
+  unset($element['upload']);
+  unset($element['remove_button']);
+  $element['fid']['#parents'] = array('fid');
+  $element['fid']['#array_parents'] = array('fid');
+  $element['fid']['#access'] = FALSE;
+  $ajax = $element['upload_button']['#ajax'];
+  $ajax['path'] = 'webfm_' . $ajax['path'];
+  $element['file_data_submit'] = array(
+    '#name' => implode('_', $element['#parents']) . '_file_data_submit',
+    '#type' => 'submit',
+    '#value' => t('upload'),
+    '#ajax' => $ajax,
+    '#validate' => array(),
+    '#limit_validation_errors' => array($element['#parents']),
+    '#submit' => array('webfm_managed_file_file_submit'),
+    '#access' => FALSE,
+  );
+  $element['file_data_process'] = array(
+    '#type' => 'hidden',
+    '#value' => isset($element['#value']['file_data_process']) ? $element['#value']['file_data_process'] : array(),
+  );
+  $element['upload_destination'] = array(
+    '#type' => 'hidden',
+    '#value' => isset($element['#value']['upload_destination']) ? $element['#value']['upload_destination'] : 0,
+    '#attributes' => array('id' => 'webfm-uploader-destination'),
+  );
+  unset($element['upload_button']);
+  $uploader_markup = theme('uploader-form', array('input_name' => implode('_', $element['#parents'])));
+  $element['buttonbar'] = array(
+    '#type' => 'markup',
+    '#markup' => $uploader_markup,
+    );
+  $templates_markup = theme('uploader-templates', array('input_name' => implode('_', $element['#parents'])));
+  $element['#suffix'] .= $templates_markup;
+  return $element;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function webfm_jquery_upload_theme(&$existing, $type, $theme, $path) {
+  $hooks = array();
+  $webfm_path = drupal_get_path('module', 'webfm_jquery_upload') . '/tpl';
+  $hooks['uploader-templates'] = array(
+    'template' => 'uploader-templates',
+    'path' => $webfm_path,
+  );
+  $hooks['uploader-form'] = array(
+    'template' => 'uploader-form',
+    'path' => $webfm_path,
+  );
+  return $hooks;
+}
+
+/**
+ * Handle the field value
+ */
+function webfm_managed_file_value(&$element, $input = FALSE, $form_state = NULL) {
+  $ret = array();
+  $fd = array();
+  $form_state_ret = $form_state['values'];
+  foreach ($element['#parents'] as $parent) {
+    $form_state_ret = isset($form_state_ret[$parent]) ? $form_state_ret[$parent] : array();
+  }
+
+  if ($element['#extended'] && isset($form_state_ret['file_data_process'])) {
+    $fd = $form_state_ret['file_data_process'];
+  }
+  elseif (is_array($form_state_ret)) {
+    $fd = $form_state_ret;
+  }
+  if ($input !== FALSE) {
+    $ret = $input;
+    $upload_name = implode('_', $element['#parents']);
+    if (!empty($_FILES['files']['name'][$upload_name]) && is_array($_FILES['files']['name'][$upload_name])) {
+      $iparent = $element['#parents'][0];
+      $depth = count($element['#parents']);
+      $input_values = $form_state['input'][$iparent];
+      $x = 0;
+      while ($x++ < $depth-1) {
+        $input_values = array_values($input_values);
+        $input_values = $input_values[0];
+      }
+      if (!empty($input_values['upload_destination'])) {
+        $form_upload_dest = drupal_substr($input_values['upload_destination'], 1);
+        $form_upload_dest = drupal_trim(webfm_utf8_urldecode($form_upload_dest));
+        $tdest = file_default_scheme() . '://' . $form_upload_dest;
+        if (preg_match('/\.\./', $form_upload_dest) || !file_prepare_directory($tdest)) {
+          watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
+          //form_set_error($upload_name, t('The files could not be uploaded.'));
+          $ret['file_data_process'] = array('error' => 1, 'message' => t('The files could not be uploaded.'));
+          return $ret;
+        }
+      }
+      else {
+        watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
+        //form_set_error($upload_name, t('The files could not be uploaded.'));
+        $ret['file_data_process'] = array('error' => 1, 'message' => t('The files could not be uploaded.'));
+        return $ret;
+      }
+
+      $result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' =>  $tdest));
+      $record = $result->fetchObject();
+      if (!webfm_check_access('uploadfile', array('dest' => $record))) {
+        $ret['file_data_process'] = array('error' => 1, 'message' => t('You do not have permission to upload files to this directory.'));
+        //form_set_error($upload_name, t('You do not have permission to upload files to this directory.'));
+        return $ret;
+      }
+      $original_files = $_FILES['files'];
+      unset($_FILES['files']['name'][$upload_name],
+        $_FILES['files']['type'][$upload_name],
+        $_FILES['files']['tmp_name'][$upload_name],
+        $_FILES['files']['error'][$upload_name],
+        $_FILES['files']['size'][$upload_name]);
+
+      // add a new form element for each extra uploaded file
+      $first = TRUE;
+      $delta = 0;
+      foreach ($original_files['name'][$upload_name] as $i => $name) {
+        if ($original_files['error'][$upload_name][$i]) {
+          continue;
+        }
+        if ($first) {
+          $new_name = $upload_name;
+          $first = FALSE;
+        }
+        else {
+          $new_name = $upload_name . '_' . $delta;
+          $delta++;
+        }
+        $_FILES['files']['name'][$new_name] = $name;
+        $_FILES['files']['type'][$new_name] = $original_files['type'][$upload_name][$i];
+        $_FILES['files']['tmp_name'][$new_name] = $original_files['tmp_name'][$upload_name][$i];
+        $_FILES['files']['error'][$new_name] = $original_files['error'][$upload_name][$i];
+        $_FILES['files']['size'][$new_name] = $original_files['size'][$upload_name][$i];
+
+
+        $extensions = '';
+        if (isset($element['#upload_validators']['file_validate_extensions'])) {
+          if (isset($element['#upload_validators']['file_validate_extensions'][0])) {
+            // Build the list of non-munged extensions if the caller provided them.
+            $extensions = $element['#upload_validators']['file_validate_extensions'][0];
+          }
+          else {
+            // If 'file_validate_extensions' is set and the list is empty then the
+            // caller wants to allow any extension. In this case we have to remove the
+            // validator or else it will reject all extensions.
+            unset($element['#upload_validators']['file_validate_extensions']);
+          }
+        }
+        else {
+          // No validator was provided, so add one using the default list.
+          // Build a default non-munged safe list for file_munge_filename().
+          $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp');
+        }
+        $frdata = array();
+        $extension_errors = webfm_file_validate_extensions($fname, $extensions);
+        if (count($extension_errors) > 0) {
+          $frdata = array('name' => $name, 'size' => $original_files['size'][$upload_name][$i], 'dest' => '/' . $form_upload_dest);
+          $frdata['invalid'] = TRUE;
+          $frdata['extensions'] = $extensions;
+        }
+        else {
+          $el1 = array(
+            '#parents' => explode('_', $new_name),
+            '#upload_location' => $element['#upload_location'],
+            //'#field_name' => $element['#field_name'],
+            '#title' => $element['#title'],
+            '#upload_validators' => array('file_validate_extensions' => ''),
+          );
+          if ($element['#extended']) {
+            $el1['#extended'] = $element['#extended'];
+            $el1['#default_value'] = $element['#default_value'];
+          }
+          else
+            $el1['#extended'] = NULL;
+
+          $fdata = file_managed_file_value($el1, $input, $form_state);
+        }
+        if ($fdata['fid'] > 0) {
+          $fname = file_munge_filename($name, $extensions);
+          $frdata = array('name' => $fname, 'size' => $original_files['size'][$upload_name][$i], 'id' => $fdata['fid'], 'dest' => '/' . $form_upload_dest);
+          if (file_exists(file_default_scheme() . '://' . $form_upload_dest . '/' . $fname)) {
+            $frdata['exists'] = TRUE;
+          }
+          else {
+            foreach (module_implements('webfm_file_uploaded') as $module) {
+              module_invoke($module, 'webfm_file_uploaded', $fname, $fdata['fid'], $form_upload_dest);
+            }
+          }
+        }
+        elseif (count($frdata) == 0) {
+          $frdata = array('name' => $name, 'size' => $original_files['size'][$upload_name][$i], 'dest' => '/' . $form_upload_dest);
+          $frdata['error'] = TRUE;
+        }
+        $fd[] = $frdata;
+      }
+     // $form_state['executed'] = true;
+    }
+    $form_state['#file_data'] = $ret;
+  }
+  $ret['file_data_process'] = $fd;
+  return $ret;
+}
+
+/**
+ * An #element_validate callback for the managed_file element.
+ */
+function webfm_managed_file_file_validate(&$element, &$form_state) {
+  // Consolidate the array value of this field to a single FID.
+  if (!$element['#extended']) {
+    form_set_value($element, $element['file_data_process']['#value'], $form_state);
+  }
+}
+
+function webfm_managed_file_file_submit($form, &$form_state) {
+  $form_state['rebuild'] = TRUE;
+}
