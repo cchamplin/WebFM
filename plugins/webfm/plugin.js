@@ -1,8 +1,9 @@
 (function($)
 {
+  
   CKEDITOR.plugins.add('webfm', {
     init: function(editor, pluginPath) {
-       console.log(editor.config);
+       editor.config.filebrowserBrowseUrl = Drupal.settings.basePath + '/webfm/browser';
     }
   });
 })(jQuery);
