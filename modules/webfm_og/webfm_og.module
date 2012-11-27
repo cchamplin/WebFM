@@ -1,0 +1,527 @@
+<?php
+/**
+ * @file
+ * Webfm Organic Groups Integration Module
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function webfm_og_menu() {
+  $items = array();
+  $items['group/%/%/admin/webfm'] = array(
+    'page callback' => 'drupal_get_form',
+    'title' => '',
+    'page arguments' => array('webfm_og_manage_group', 1, 2),
+    'type' => MENU_LOCAL_TASK,
+    'access callback' => 'webfm_og_settings_access',
+    'access arguments' => array(1, 2),
+  );
+  return $items;
+}
+
+/**
+ * Access callback for webfm og management page
+ */
+function webfm_og_settings_access($group_type, $gid) {
+  $group = entity_load_single($group_type, $gid);
+  if (!webfm_og_is_group_webfm_enabled($group_type, $group)) {
+    return FALSE;
+  }
+  return (user_access('administer groups') && user_access('administer webfm'));
+}
+
+/**
+ * Helper function to determine if a path has a parent directory that is an OG Group Directory
+ */
+function _webfm_og_check_og_parent($path) {
+  $result = db_query('SELECT path FROM {webfm_dir} d INNER JOIN {webfm_og} o ON d.did = o.did WHERE d.path=:path OR LOCATE(CONCAT(d.path, \'/\'), :path) > 0', array(':path' => $path));
+  return $result->rowCount() > 0;
+}
+
+/**
+ * Implements hook_webfm_readtrees().
+ */
+function webfm_og_webfm_readtrees($backend, $treeData) {
+  global $user;
+  $groupdata = og_get_groups_by_user($user);
+  if (count($groupdata) == 0)
+    return FALSE;
+  $groups = array();
+  foreach ($groupdata as $gtype) {
+    foreach ($gtype as $gid)
+      $groups[] = $gid;
+  }
+  $groupInfo = node_load_multiple($groups);
+  $query = db_select('webfm_dir', 'd')
+           ->fields('d', array('path'))
+           ->fields('o', array('gid'))
+           ->condition('gid', $groups, 'IN');
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  $result = $query->execute();
+  while ($record = $result->fetchObject()) {
+    $path = file_uri_target($record->path);
+    $treeData->trees[] = $backend->buildWebTree($path, $groupInfo[$record->gid]->title);
+  }
+}
+
+/**
+ * Implements hook_webfm_check_access().
+ */
+function webfm_og_webfm_check_access($action, $data) {
+  switch ($action) {
+    case 'resolveconflict':
+    case 'deletefile':
+    case 'renamefile':
+      return _webfm_og_check_og_parent($data['fpath']);
+    case 'movefile':
+      return (_webfm_og_check_og_parent($data['fpath']) && _webfm_og_check_og_parent($data['dest']->path));
+    case 'cancelupload':
+      return TRUE;
+    case 'deletedir':
+    case 'renamedir':
+      return _webfm_og_check_og_parent($data['dir']->path);
+    case 'movedir':
+      return (_webfm_og_check_og_parent($data['dir']->path) && _webfm_og_check_og_parent($data['destdir']->path));
+    case 'createdir':
+      return _webfm_og_check_og_parent($data['destdir']->path);
+    case 'uploadfile':
+      return _webfm_og_check_og_parent($data['dest']->path);
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_query_alter().
+ */
+function webfm_og_query_webfm_check_directories_alter(QueryAlterableInterface $query) {
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  $fields =& $query->getFields();
+  unset($fields['uid']);
+  global $user;
+  $query->addExpression('IF(o.id,:val,d.uid)', 'uid', array(':val' => $user->uid));
+}
+
+/**
+ * Implements hook_query_alter().
+ */
+function webfm_og_query_webfm_check_files_alter(QueryAlterableInterface $query) {
+  //$args = $query->getArguments();
+  //$path = $args[':db_condition_placeholder_0'];
+  //print_r($args);
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  // $result = db_query('SELECT path FROM {webfm_og} WHERE');
+  $fields =& $query->getFields();
+  unset($fields['uid']);
+  global $user;
+  $query->addExpression('IF(o.id,:val,d.uid)', 'uid', array(':val' => $user->uid));
+}
+
+/**
+ * Implements hook_webfm_check_file_access().
+ */
+function webfm_og_webfm_check_file_access($path) {
+  global $user;
+
+  $groupdata = og_get_groups_by_user($user);
+  if (count($groupdata) == 0)
+    return FALSE;
+  $groups = array();
+  foreach ($groupdata as $gtype) {
+    foreach ($gtype as $gid)
+      $groups[] = $gid;
+  }
+  $query = db_select('webfm_dir', 'd')
+           ->fields('d', array('path'))
+           ->condition('gid', $groups, 'IN')
+           ->where('d.path = :path OR LOCATE(CONCAT(d.path,\'/\'),:path) > 0', array(':path' => $path));
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  $result = $query->execute();
+  return $result->rowCount() > 0;
+}
+
+/**
+ * Implements hook_webfm_check_valid_path().
+ */
+function webfm_og_webfm_check_valid_path($path) {
+  global $user;
+
+  $groupdata = og_get_groups_by_user($user);
+  if (count($groupdata) == 0)
+    return FALSe;
+  $groups = array();
+  foreach ($groupdata as $gtype) {
+    foreach ($gtype as $gid)
+      $groups[] = $gid;
+  }
+  $query = db_select('webfm_dir', 'd')
+           ->fields('d', array('path'))
+           ->condition('gid', $groups, 'IN');
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  $result = $query->execute();
+  while ($record = $result->fetchAssoc()) {
+    $og_path = file_uri_target($record['path']);
+    if (drupal_strpos($path, $og_path) === 0)
+      return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ *  Implements hook og_ui_get_group_admin().
+ */
+function webfm_og_og_ui_get_group_admin($group_type, $gid) {
+  $items = array();
+  $group = entity_load_single($group_type, $gid);
+  if (!webfm_og_is_group_webfm_enabled($group_type, $group)) {
+    return $items;
+  }
+  if (user_access('administer webfm')) {
+    $items['webfm'] = array(
+      'title' => t('WebFM'),
+      'description' => t('Manage Group WebFM Settings.'),
+      'href' => 'admin/webfm',
+    );
+  }
+  return $items;
+}
+
+/**
+ * Implements callback for menu item manage group.
+ */
+function webfm_og_manage_group($form, &$form_state, $group_type, $gid) {
+  og_set_breadcrumb($group_type, $gid, array(l(t('Group'), "$group_type/$gid/group")));
+  $group = entity_load_single($group_type, $gid);
+  $label = entity_label($group_type, $group);
+
+  $query = db_select('webfm_dir', 'd')
+           ->fields('d', array('path'))
+           ->fields('o', array('gid'))
+           ->condition('gid', $gid, '=');
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  $result = $query->execute();
+  $dir_record = $result->fetchObject();
+
+  $form['group_type'] = array('#type' => 'value', '#value' => $group_type);
+  $form['gid'] = array('#type' => 'value', '#value' => $gid);
+
+  $form['og_webfm'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Manage WebFM for %group', array('%group' => $label)),
+  );
+  $form['og_webfm']['path'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Path to root directory'),
+    '#description' => t('This directory lives under OG Webfm Settings ROOT directory'),
+    '#default_value' => ($dir_record) ? file_uri_target($dir_record->path) : '',
+    '#required' => TRUE,
+  );
+  $form['og_webfm']['create_path'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('If directory does not exist create it'),
+  );
+
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array('#type' => 'submit', '#value' => t('Save'));
+
+  return $form;
+}
+
+/**
+ * Implements validation callback for group management input
+ */
+function webfm_og_manage_group_validate($form, &$form_state) {
+  $path = $form_state['values']['path'];
+  if ($path[0] == '/' || $path[0] == '\\') {
+    form_set_error('path', t("Path should not start with a '/' or '\\'"));
+    return;
+  }
+  if (preg_match('/\.\./', $path)) {
+    form_set_error('path', t('The specified path is invalid'));
+    return;
+  }
+  $query_path = file_default_scheme() . '://' . $path;
+
+  if ($form_state['values']['create_path'] == FALSE) {
+    if (!is_dir($query_path)) {
+      form_set_error('path', t('The directory does not exist'));
+      return;
+    }
+  }
+
+
+  $group_type = $form_state['values']['group_type'];
+  $gid = $form_state['values']['gid'];
+  $query = db_select('webfm_dir', 'd')
+           ->fields('d', array('path'))
+           ->fields('o', array('gid'))
+           ->condition('o.gid', $gid, '!=')
+           ->where('d.path = :path', array(':path' => $query_path));
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  $result = $query->execute();
+  if ($result->rowCount() > 0) {
+    form_set_error('path', t('That path is in use by another group'));
+  }
+}
+
+/**
+ * Implements submit callback fro management form
+ */
+function webfm_og_manage_group_submit($form, &$form_state) {
+  $group_type = $form_state['values']['group_type'];
+  $gid = $form_state['values']['gid'];
+
+  $path = $form_state['values']['path'];
+  $query_path = file_default_scheme() . '://' . $path;
+
+  if (!is_dir($query_path) && $form_state['values']['create_path']) {
+    if (!file_prepare_directory($query_path, FILE_CREATE_DIRECTORY)) {
+      form_set_error('path', t('Could not create directory'));
+      return;
+    }
+  }
+  $query = db_select('webfm_dir', 'd')
+           ->fields('d', array('path', 'did'))
+           ->where('d.path = :path', array(':path' => $query_path));
+  $result = $query->execute();
+  if ($result->rowCount() > 0) {
+    $did = $result->fetchObject()->did;
+  }
+  else {
+    $fields = array('uid' => 0, 'path' => $query_path);
+    $did = db_insert('webfm_dir')->fields($fields)->execute();
+  }
+  if ($did) {
+    $query = db_select('webfm_og', 'o')
+    ->fields('o', array('did'))
+    ->condition('gid', $gid, '=');
+    $result = $query->execute();
+    if ($result->rowCount() <= 0) {
+      $fields = array('did' => $did, 'gid' => $gid);
+      db_insert('webfm_og')->fields($fields)->execute();
+    }
+    else {
+      $fields = array('did' => $did);
+      db_update('webfm_og')->fields($fields)->condition('gid', $gid, '=')->execute();
+    }
+  }
+  else {
+    form_set_error('path', t('No such directory record exists'));
+    return;
+  }
+  drupal_set_message(t('WebFM Settings have been saved'));
+}
+
+define('OG_WEBFM_FIELD', 'group_webfm');
+
+/**
+ * Implements hook_form_alter().
+ */
+function webfm_og_form_node_type_form_alter(&$form, &$form_state) {
+  $node_type = $form['#node_type']->type;
+  $is_group = og_is_group_type('node', $node_type);
+  // Group content settings.
+  $is_webfm_enabled = webfm_og_is_group_webfm_active('node', $node_type);
+  $form['og']['og_group_type']['#ajax'] = array(
+    'callback' => 'webfm_og_node_type_form_settings',
+    'wrapper' => 'webfm-og-settings-wrapper',
+  );
+  $description = t('Enable WebFM for groups of this content type.');
+    $form['og']['webfm_og_webfm_enabled'] = array(
+    '#prefix' => '<div id="webfm-og-settings-wrapper">',
+    '#suffix' => '</div>',
+    '#type' => 'checkbox',
+    '#title' => t('Webfm Enabled'),
+    '#default_value' =>  $is_webfm_enabled,
+    '#description' => $description,
+    '#disabled' => $is_webfm_enabled,
+    '#states' => array(
+      'visible' => array(
+        ':input[name="og_group_type"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements callback for form settings
+ */
+function webfm_og_node_type_form_settings($form, &$form_state) {
+  return $form['og']['webfm_og_webfm_enabled'];
+}
+
+/**
+ * Determine if the webfm field is active for a specific entity type and bundle
+ */
+function webfm_og_is_group_webfm_active($entity_type, $bundle_name) {
+  return (bool)field_info_instance($entity_type, OG_WEBFM_FIELD, $bundle_name);
+}
+
+/**
+ * Determine if webfm is enabled on the entity type
+ */
+function webfm_og_is_group_webfm_enabled($entity_type, $entity) {
+  $wrapper = entity_metadata_wrapper($entity_type, $entity);
+  return !empty($wrapper->{OG_WEBFM_FIELD}) && $wrapper->{OG_WEBFM_FIELD}->value();
+}
+
+/**
+ * Implements hook_entity_insert().
+ */
+function webfm_og_node_type_insert($info) {
+  webfm_og_node_type_save($info->type);
+}
+
+/**
+ * Implements hook_entity_update().
+ */
+function webfm_og_node_type_update($info) {
+  webfm_og_node_type_save($info->type);
+}
+
+/**
+ * Save the status of webfm in relation to the content type
+ */
+function webfm_og_node_type_save($bundle_name) {
+  if (variable_get('webfm_og_webfm_enabled_' . $bundle_name, FALSE)) {
+    og_create_field(OG_WEBFM_FIELD, 'node', $bundle_name);
+  }
+  $vars = array(
+    'webfm_og_webfm_enabled',
+  );
+  foreach ($vars as $var) {
+    variable_del($var . '_' . $bundle_name);
+  }
+}
+
+/**
+ * Implements hook_field_access().
+ */
+function webfm_og_field_access($op, $field, $entity_type, $entity, $account) {
+  global $user;
+
+  if (empty($entity)) {
+    // We are in field settings page.
+    return;
+  }
+
+
+  if (!$user->uid) {
+    // User is anonymous, and user register might try to add the
+    // group-audience field.
+    return;
+  }
+
+  if ($op != 'edit') {
+    return;
+  }
+
+  $field_name = $field['field_name'];
+  list($id, $vid, $bundle_name) = entity_extract_ids($entity_type, $entity);
+  if ($field_name == OG_WEBFM_FIELD) {
+    $wrapper = entity_metadata_wrapper($entity_type, $entity);
+    if ($wrapper->getIdentifier() && !$wrapper->{OG_WEBFM_FIELD}->value()) {
+      // Entity isn't an active group.
+      return;
+    }
+    $instance = field_info_instance($entity_type, $field_name, $bundle_name);
+    if (!empty($instance['widget']['settings']['webfm_og_hide'])) {
+      return FALSE;
+    }
+    return;
+  }
+  return;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function webfm_og_form_field_ui_field_edit_form_alter(&$form, &$form_state) {
+  if ($form['#field']['field_name'] != OG_WEBFM_FIELD) {
+    return;
+  }
+  $form['#instance']['widget']['settings'] += array('webfm_og_hide' => TRUE);
+  $form['instance']['widget']['settings']['webfm_og_hide'] = array(
+   '#type' => 'checkbox',
+   '#title' => t('Hide'),
+   '#description' => t('Hide webfm field, and apply default values.'),
+   '#default_value' => $form['#instance']['widget']['settings']['webfm_og_hide'],
+  );
+}
+
+/**
+ * Webfm OG Field Info
+ */
+function webfm_og_og_fields_info() {
+  $items[OG_WEBFM_FIELD] = array(
+    'type' => array('group'),
+    'description' => t('Determine if this group should be webfm enabled.'),
+    'field' => array(
+      'field_name' => OG_WEBFM_FIELD,
+      'type' => 'list_boolean',
+      'cardinality' => 1,
+      'settings' => array(
+        'allowed_values' => array(0 => 'Webfm Disabled', 1 => 'Webfm Enabled'),
+        'allowed_values_function' => '',
+      ),
+    ),
+    'instance' => array(
+      'label' => t('Webfm Enabled'),
+      'description' => t('Determine if this gorup should be webfm enabled.'),
+      'display_label' => 1,
+      'widget' => array(
+        'module' => 'options',
+        'settings' => array(
+          'webfm_og_hide' => TRUE,
+        ),
+        'type' => 'options_onoff',
+        'weight' => 0,
+      ),
+      'default_value' => array(0 => array('value' => 1)),
+      'display' => array('default' => array('label' => 'hidden', 'type' => 'hidden')),
+    ),
+  );
+  return $items;
+}
+
+/*
+function webfm_og_content_settings($form,&$form_state)
+{
+  $entity_info = entity_get_info();
+  $form['group_settings'] = array(
+    '#type' => 'vertical_tabs',
+    '#weight' => 99,
+  );
+  $bundles = og_get_all_group_bundle();
+  foreach ($bundles as $entity_type => $bundle)
+  {
+    foreach ($bundle as $content_type => $label)
+    {
+      $form['group_settings_' . $entity_type . '_' . $content_type] = array(
+      '#type' => 'fieldset',
+      '#title' => t('@bundle - @entity entity', array('@bundle' => $label, '@entity' => $entity_type)),
+      '#collapsible' => TRUE,
+      '#group' => 'group_settings');
+      $form['group_settings_' . $entity_type . '_' . $content_type][$entity_type . '_' . $content_type . '_' . 'webfm'] = array(
+        '#type'=>'checkbox',
+        '#title'=>t('Enable WebFM for groups of %title',array('%title'=>$label)),
+      );
+    }
+  }
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array('#type' => 'submit', '#value' => t('Save'));
+  return $form;
+}
+function webfm_og_content_settings_submit($form,&$form_state)
+{
+  $bundles = og_get_all_group_bundle();
+  foreach ($bundles as $entity_type => $bundle)
+  {
+    foreach ($bundle as $content_type => $label)
+    {
+      if (isset($form_state['values'][$entity_type . '_' . $content_type . '_webfm']))
+      {
+      }
+    }
+  }
+}*/

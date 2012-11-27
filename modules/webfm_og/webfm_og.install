@@ -1,0 +1,38 @@
+<?php
+/**
+ * @file
+ * WebFM OG Module Installation
+ */
+
+function webfm_og_schema() {
+  $schema['webfm_og'] = array(
+    'description' => 'WebFM OG Reference Table',
+    'fields' => array(
+      'id' => array(
+        'description' => 'Primary id',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'gid' => array(
+        'description' => 'The referenced OG Group ID',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'did' => array(
+        'description' => 'The {webfm_dir}.did reference to the directory',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'unique keys' => array(
+      'did' => array('did'),
+    ),
+    'primary key' => array('id'),
+  );
+  return $schema;
+}
