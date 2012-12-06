@@ -644,10 +644,10 @@ Webfm.icons = {
     var fileItems = {
         remfile: {name: Webfm.lang.file_delete, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}},
         renamefile: {name: Webfm.lang.file_rename, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}},
-        replacefile: {name: Webfm.lang.file_replace, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}},
+        //replacefile: {name: Webfm.lang.file_replace, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}},
         viewfile: {name: Webfm.lang.file_view, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}},
         downloadfile: {name: Webfm.lang.file_download, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}},
-        sendlink: {name: Webfm.lang.file_pastelink, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}}
+        //sendlink: {name: Webfm.lang.file_pastelink, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}}
     }
     //Context Menu
     $.contextMenu({
