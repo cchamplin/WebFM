@@ -1,4 +1,4 @@
-name = WebFM
+name = WebFM 7.x
 description = A WebFM Replacement for Drupal 7
 core = 7.x
 package = "WebFM"
