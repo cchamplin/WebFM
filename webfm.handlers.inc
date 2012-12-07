@@ -13,14 +13,14 @@
  */
 function webfm_ajax_renamefile($params, &$response) {
   // @todo Standarize path handling and sanitation
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
 
   if (!webfm_is_valid_path($params[0])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
     return;
   }
-  $params[1] = drupal_trim(webfm_utf8_urldecode($params[1]));
+  $params[1] = trim(webfm_utf8_urldecode($params[1]));
   if (!webfm_is_valid_filename($params[1])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
@@ -99,7 +99,7 @@ function webfm_is_valid_path($path, $check_root = TRUE) {
   if ($path[0] == '/' || $path[0] == '\\')
     return FALSE;
 
-  $path = drupal_str_replace('\\', '/', $path);
+  $path = str_replace('\\', '/', $path);
 
   if ($check_root) {
     foreach (module_implements('webfm_check_valid_path') as $module) {
@@ -108,10 +108,10 @@ function webfm_is_valid_path($path, $check_root = TRUE) {
         return TRUE;
     }
 
-    if (drupal_strpos($path, variable_get('webfm_root', "SITE")) !== 0)
+    if (strpos($path, variable_get('webfm_root', "SITE")) !== 0)
       return FALSE;
   }
-  return FALSE;
+  return TRUE;
 }
 
 function webfm_is_valid_directory($filename) {
@@ -138,13 +138,13 @@ function webfm_is_valid_filename($filename, $extensions = '') {
  * Param1: Destination name for directory
  */
 function webfm_ajax_renamedir($params, &$response) {
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
   if (!webfm_is_valid_path($params[0]) || $params[0] == variable_get('webfm_root', "SITE")) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
     return;
   }
-  $params[1] = drupal_trim(webfm_utf8_urldecode($params[1]));
+  $params[1] = trim(webfm_utf8_urldecode($params[1]));
   if (!webfm_is_valid_directory($params[1])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
@@ -224,13 +224,13 @@ function webfm_ajax_renamedir($params, &$response) {
  */
 function webfm_ajax_movefile($params, &$response) {
 
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
   if (!webfm_is_valid_path($params[0])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
     return;
   }
-  $params[1] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[1])), 1);
+  $params[1] = drupal_substr(trim(webfm_utf8_urldecode($params[1])), 1);
   if (!webfm_is_valid_path($params[1]) || !is_dir(file_default_scheme() . '://' . $params[1])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
@@ -312,13 +312,13 @@ function webfm_ajax_movefile($params, &$response) {
  */
 function webfm_ajax_movedir($params, &$response) {
 
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
   if (!webfm_is_valid_path($params[0]) || $params[0] == variable_get('webfm_root', "SITE")) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
     return;
   }
-  $params[1] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[1])), 1);
+  $params[1] = drupal_substr(trim(webfm_utf8_urldecode($params[1])), 1);
   if (!webfm_is_valid_path($params[1])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
@@ -407,7 +407,7 @@ function webfm_ajax_movedir($params, &$response) {
  * Param0: Path to file
  */
 function webfm_ajax_deletefile($params, &$response) {
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
   if (!webfm_is_valid_path($params[0])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
@@ -462,7 +462,7 @@ function webfm_ajax_deletefile($params, &$response) {
  * Param0: Path to directory
  */
 function webfm_ajax_deletedir($params, &$response) {
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
   if (!webfm_is_valid_path($params[0]) || $params[0] == variable_get('webfm_root', "SITE")) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
@@ -531,13 +531,13 @@ function webfm_ajax_deletedir($params, &$response) {
  * Param1: Query string
  */
 function webfm_ajax_search($params, &$response) {
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
   if (!webfm_is_valid_path($params[0])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
     return;
   }
-  $params[1] = drupal_trim(webfm_utf8_urldecode($params[1]));
+  $params[1] = trim(webfm_utf8_urldecode($params[1]));
   if (preg_match('/\.\./', $params[1])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid query');
@@ -576,13 +576,13 @@ function webfm_ajax_search($params, &$response) {
  * Param1: Directory name
  */
 function webfm_ajax_createdir($params, &$response) {
-  $params[0] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[0])), 1);
+  $params[0] = drupal_substr(trim(webfm_utf8_urldecode($params[0])), 1);
   if (!webfm_is_valid_path($params[0])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
     return;
   }
-  $params[1] = drupal_trim(webfm_utf8_urldecode($params[1]));
+  $params[1] = trim(webfm_utf8_urldecode($params[1]));
   if (!webfm_is_valid_directory($params[1])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
@@ -652,13 +652,13 @@ function webfm_ajax_resolveconflict($params, &$response) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid file id');
   }
-  $params[1] = drupal_substr(drupal_trim(webfm_utf8_urldecode($params[1])), 1);
+  $params[1] = drupal_substr(trim(webfm_utf8_urldecode($params[1])), 1);
   if (!webfm_is_valid_path($params[1])) {
     $response['status'] = 'false';
     $response['err'] = t('Invalid path');
     return;
   }
-  $params[2] = drupal_trim(webfm_utf8_urldecode($params[2]));
+  $params[2] = trim(webfm_utf8_urldecode($params[2]));
 
   $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp');
   $extension_errors = webfm_file_validate_extensions($params[2], $extensions);

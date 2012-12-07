@@ -261,7 +261,7 @@ function webfm_managed_file_value(&$element, $input = FALSE, $form_state = NULL)
       }
       if (!empty($input_values['upload_destination'])) {
         $form_upload_dest = drupal_substr($input_values['upload_destination'], 1);
-        $form_upload_dest = drupal_trim(webfm_utf8_urldecode($form_upload_dest));
+        $form_upload_dest = trim(webfm_utf8_urldecode($form_upload_dest));
         $tdest = file_default_scheme() . '://' . $form_upload_dest;
         if (preg_match('/\.\./', $form_upload_dest) || !file_prepare_directory($tdest)) {
           watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
@@ -332,7 +332,7 @@ function webfm_managed_file_value(&$element, $input = FALSE, $form_state = NULL)
           $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp');
         }
         $frdata = array();
-        $extension_errors = webfm_file_validate_extensions($fname, $extensions);
+        $extension_errors = webfm_file_validate_extensions($name, $extensions);
         if (count($extension_errors) > 0) {
           $frdata = array('name' => $name, 'size' => $original_files['size'][$upload_name][$i], 'dest' => '/' . $form_upload_dest);
           $frdata['invalid'] = TRUE;
