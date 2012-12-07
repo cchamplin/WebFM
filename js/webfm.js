@@ -848,7 +848,7 @@ Webfm.icons = {
         for (var ridx in result.updates.remove)
         {
           var rem_item = result.updates.remove[ridx];
-          if (rem_item.f == true)
+          if (rem_item.f == 'true')
           {
             this.fileCache.removeFile(rem_item);
           }
@@ -864,7 +864,7 @@ Webfm.icons = {
         for (var aidx in result.updates.add)
         {
           var add_item = result.updates.add[aidx];
-          if (add_item.f == true)
+          if (add_item.f == 'true')
           {
             this.fileCache.addFile(add_item);
           }

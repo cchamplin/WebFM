@@ -403,7 +403,8 @@ function webfm_file_browser() {
   $form_markup = '';
   // Only provide the upload markup if they have permission to create files
   if (user_access('create webfm file')) {
-    $form_markup = drupal_render(drupal_get_form('webfm_uploader_form'));
+    $form_data = drupal_get_form('webfm_uploader_form');
+    $form_markup = drupal_render($form_data);
   }
   $webfm_markup = theme('webfm-documents', array());
   print theme('webfm-browser', array('content' => $webfm_markup . $form_markup));
@@ -642,7 +643,7 @@ function webfm_getFileData($file, $path) {
   $fpieces = explode('.', $file->filename);
   $ext = array_pop($fpieces);
   $fdata = array('n' => $file->filename,
-        'f' => TRUE,
+        'f' => 'true',
         'p' => $path,
         'm' => filemtime($file->uri),
         'c' => filectime($file->uri),
@@ -660,7 +661,7 @@ function webfm_getFileDataExt($file, $path) {
   $ext = array_pop($fpieces);
   $fdata = array('n' => $file->filename,
         'id' => $file->fid,
-        'f' => TRUE,
+        'f' => 'true',
         'p' => $path,
         'm' => filemtime($file->uri),
         'c' => filectime($file->uri),
@@ -836,7 +837,6 @@ function webfm_settings_form_submit($form, &$form_state) {
 
 function webfm_file_validate_extensions($filename, $extensions) {
   $errors = array();
-
   $regex = '/\.(' . preg_replace('/ +/', '|', preg_quote($extensions)) . ')$/i';
   if (!preg_match($regex, $filename)) {
     $errors[] = t('Only files with the following extensions are allowed: %files-allowed.', array('%files-allowed' => $extensions));
