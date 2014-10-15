@@ -1,6 +1,194 @@
 
 img { border: 0; }
 
+.ui-dialog.ui-widget {
+  z-index: 250;
+}
+
+.page #webfm,
+#page #webfm
+{
+  overflow: scroll;
+  max-height: 500px;
+}
+#webfm-dirlist .action-copy-file-link {
+  background: url('../image/icon/clipboard-2.png') no-repeat top left;
+  width: 16px;
+  height: 16px;
+  display:block;
+  font-size: 0em;
+  margin-right: 5px;
+  float: left;
+}
+#webfm-dirlist .action-copy-file-address {
+  background: url('../image/icon/clipboard.png') no-repeat top left;
+  width: 16px;
+  height: 16px;
+  display:block;
+  font-size: 0em;
+  float: left;
+}
+
+@-webkit-keyframes wobble-top {
+  16.65% {
+    -webkit-transform: skew(-12deg);
+    transform: skew(-12deg);
+  }
+
+  33.3% {
+    -webkit-transform: skew(10deg);
+    transform: skew(10deg);
+  }
+
+  49.95% {
+    -webkit-transform: skew(-6deg);
+    transform: skew(-6deg);
+  }
+
+  66.6% {
+    -webkit-transform: skew(4deg);
+    transform: skew(4deg);
+  }
+
+  83.25% {
+    -webkit-transform: skew(-2deg);
+    transform: skew(-2deg);
+  }
+
+  100% {
+    -webkit-transform: skew(0);
+    transform: skew(0);
+  }
+}
+
+@keyframes wobble-top {
+  16.65% {
+    -webkit-transform: skew(-12deg);
+    -ms-transform: skew(-12deg);
+    transform: skew(-12deg);
+  }
+
+  33.3% {
+    -webkit-transform: skew(10deg);
+    -ms-transform: skew(10deg);
+    transform: skew(10deg);
+  }
+
+  49.95% {
+    -webkit-transform: skew(-6deg);
+    -ms-transform: skew(-6deg);
+    transform: skew(-6deg);
+  }
+
+  66.6% {
+    -webkit-transform: skew(4deg);
+    -ms-transform: skew(4deg);
+    transform: skew(4deg);
+  }
+
+  83.25% {
+    -webkit-transform: skew(-2deg);
+    -ms-transform: skew(-2deg);
+    transform: skew(-2deg);
+  }
+
+  100% {
+    -webkit-transform: skew(0);
+    -ms-transform: skew(0);
+    transform: skew(0);
+  }
+}
+
+.wobble-top {
+  display: inline-block;
+  -webkit-transform-origin: 0 100%;
+  -ms-transform-origin: 0 100%;
+  transform-origin: 0 100%;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  -webkit-transform: translateZ(0);
+  -ms-transform: translateZ(0);
+  transform: translateZ(0);
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0);
+}
+
+.wobble-top.active {
+  -webkit-animation-name: wobble-top;
+  animation-name: wobble-top;
+  -webkit-animation-duration: 1s;
+  animation-duration: 1s;
+  -webkit-animation-timing-function: ease-in-out;
+  animation-timing-function: ease-in-out;
+  -webkit-animation-iteration-count: 1;
+  animation-iteration-count: 1;
+}
+.add-attach-item {
+  -webkit-animation: add-item-animation .6s ease-out forwards;
+  -o-animation: add-item-animation .6s ease-out forwards;
+  animation: add-item-animation .6s ease-out forwards;
+  -webkit-transform-origin: 50% 50%;
+  -ms-transform-origin: 50% 50%;
+  -o-transform-origin: 50% 50%;
+  transform-origin: 50% 50%
+}
+@keyframes add-item-animation {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  99% {
+    opacity: 0;
+    transform: scale(4);
+  }
+ 
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@-webkit-keyframes add-item-animation {
+  0% {
+    opacity: 1;
+    -webkit-transform: scale(1);
+    transform: scale(1)
+  }
+
+  99% {
+    opacity: 0;
+    -webkit-transform: scale(4);
+    transform: scale(4);
+  }
+
+
+  100% {
+    opacity: 1;
+    -webkit-transform: scale(1);
+    transform: scale(1)
+  }
+}
+
+@-o-keyframes add-item-animation {
+  0% {
+    opacity: 1;
+    -o-transform: scale(1);
+    transform: scale(1)
+  }
+
+  99% {
+    opacity: 0;
+    -o-transform: scale(4);
+    transform: scale(4)
+  }
+
+
+  100% {
+    opacity: 1;
+    -o-transform: scale(1);
+    transform: scale(1)
+  }
+}
+
+
 #webfm-dirlist.narrow { text-align: left;  margin-left: 220px;}
 #webfm-dirlist.wide { margin-left:0px; }
 #webfm-dirlist table { width:99%; font-weight:normal; font-size: 8pt; margin:0 auto; cursor:default; background-color:#f0f0f0; border:2px solid #d0d0d0; }
@@ -19,6 +207,8 @@ img { border: 0; }
 #webfm-dirlist-ctls .selected { background-color: #2092d0; cursor:pointer; }
 #webfm-dirlist td.icon { width: 30px; }
 #webfm-dirlist td.ctls-td { text-align: right; }
+#webfm-dirlist thead td { border: 0px none; }
+/*#webfm-dirlist thead td:first-child { border-right: 1px solid; }*/
 
 #webfm-tree { float:left; clear:both; position:relative; }
 #webfm-tree .selected { background-color: #e7e7e7; }
@@ -138,3 +328,12 @@ img { border: 0; }
 {
  text-align: right;
 }
+
+#webfm #webfm-attachments .attachment-info-box
+{
+  display: block;
+  border: 1px solid #D7D7D7;
+  padding-bottom: 3px;
+  margin-bottom: 3px;
+}
+

@@ -15,14 +15,14 @@ require_once(drupal_get_path('module', 'webfm') . '/webfm.widget.inc');
 function webfm_menu() {
   $items = array();
   $items['documents'] = array(
-    'title' => 'Document Management',
+    'title' => 'Web Media Library',
     'description' => 'Administer Documents for WebFM',
     'page callback' => 'webfm_documents_view',
     'access callback' => 'webfm_documents_access',
     'type' => MENU_NORMAL_ITEM,
   );
   $items['webfm/browser'] = array(
-    'title' => 'Document Management',
+    'title' => 'Web Media Library',
     'description' => 'Administer Documents for WebFM',
     'page callback' => 'webfm_file_browser',
     'access callback' => 'webfm_file_browser_access',
@@ -46,6 +46,30 @@ function webfm_menu() {
     'type' => MENU_CALLBACK,
   );
   $items['webfm/%'] = array(
+    'title' => 'File view',
+    'description' => 'View a WebFM File',
+    'page callback' => 'webfm_file_view',
+    'page arguments' => array(1),
+    'access callback' => 'webfm_document_view_access',
+    'type' => MENU_CALLBACK,
+  );
+  $items['webfm_send/%'] = array(
+    'title' => 'That file has moved!',
+    'description' => 'View a missing WebFM File',
+    'page callback' => 'webfm_migrate_file_view',
+    'page arguments' => array(1),
+    'access callback' => 'webfm_document_view_access',
+    'type' => MENU_CALLBACK,
+  );
+  /*$items['webfm/%'] = array(
+    'title' => 'File download',
+    'description' => 'Download a WebFM File',
+    'page callback' => 'webfm_file_download',
+    'page arguments' => array(1),
+    'access callback' => 'webfm_document_download_access',
+    'type' => MENU_CALLBACK,
+  );*/
+  $items['webfm/%/download'] = array(
     'title' => 'File download',
     'description' => 'Download a WebFM File',
     'page callback' => 'webfm_file_download',
@@ -102,8 +126,170 @@ function webfm_webfm_file_uploaded($fname, $fid, $dest) {
     file_save($file);
     $fields = array('fid' => $file->fid, 'modified' => filemtime($file->uri));
     db_insert('webfm_file')->fields($fields)->execute();
+    if (function_exists('apachesolr_entity_update')) {
+      $fpieces = explode('.', $file->filename);
+      $ext = array_pop($fpieces);
+      if (in_array(strtolower($ext),array('pdf','xls','ppt','doc','xlsx','pptx','txt','docx','rtf','xml'))) {
+
+        $indexer_table = apachesolr_get_indexer_table('file');
+        db_merge($indexer_table)
+        ->key(array(
+          'entity_type' => 'file',
+          'entity_id' => $file->fid,
+        ))
+        ->fields(array(
+          'bundle' => 'file',
+          'status' => $file->status,
+          'changed' => REQUEST_TIME,
+        ))
+        ->execute();
+      }
+    }
   }
 }
+
+/**
+ * Implements hook_apachesolr_entity_info_alter()
+ *
+*/
+function webfm_apachesolr_entity_info_alter(&$entity_info) {
+   $entity_info['file']['indexable'] = TRUE;
+  $entity_info['file']['status callback'][] = 'webfm_apachesolr_status_callback';
+  $entity_info['file']['document callback'][] = 'webfm_apachesolr_index_solr_document';
+  $entity_info['file']['reindex callback'] = 'webfm_apachesolr_solr_reindex';
+  $entity_info['file']['index_table'] = 'webfm_apachesolr_index_entities_file';
+  $entity_info['file']['result callback'] = 'webfm_apachesolr_result';
+}
+
+function webfm_apachesolr_status_callback($entity_id, $entity_type) {
+  $file = file_load($entity_id);
+  return $file->status && property_exists($file,'webfm');
+}
+
+function webfm_apachesolr_index_solr_document(ApacheSolrDocument $document, $file, $entity_type) {
+  $document->is_uid = $file->uid;
+  $document->label = apachesolr_clean_text($file->filename);
+  $document->timestamp = apachesolr_date_iso($file->timestamp);
+  $document->ds_created = apachesolr_date_iso($file->timestamp);
+  $document->ds_changed = apachesolr_date_iso($file->timestamp);
+  $fpieces = explode('.', $file->filename);
+  $ext = array_pop($fpieces);
+
+  
+  $document->bundle = $ext;
+  $document->bundle_name = $ext;
+
+  $document->ts_uri = $GLOBALS['base_url'] . '/webfm/' . $file->fid;
+  $document->url = $GLOBALS['base_url'] . '/webfm/' . $file->fid;
+  $document->path = $GLOBALS['base_url'] . '/webfm/' . $file->fid;
+
+  if (function_exists('drupal_get_path_alias')) {
+    $language = empty($file->language) ? NULL : $node->language;
+    $path = 'webfm/' . $file->fid;
+    $output = drupal_get_path_alias($path, $language);
+    if ($output && $output != $path) {
+      $document->path_alias = $output;
+    }
+  }
+
+  $env_id = apachesolr_default_environment();
+  $data = webfm_apachesolr_extract($env_id, $file);
+  $text = $data->extracted;
+
+  $text = iconv("UTF-8", "UTF-8//IGNORE", $text);
+  $document->content = trim(apachesolr_clean_text($text));
+
+  $documents = array();
+  $documents[] = $document;
+  return $documents;
+}
+
+function webfm_apachesolr_solr_reindex() {
+ $indexer_table = apachesolr_get_indexer_table('file');
+  $transaction = db_transaction();
+  $env_id = apachesolr_default_environment();
+  try {
+    db_delete($indexer_table)
+      ->condition('entity_type', 'file')
+      ->execute();
+
+    if (apachesolr_get_index_bundles($env_id, 'file')) {
+      $select = db_select('file_managed', 'f');
+      $select->join('webfm_file','w','w.fid = f.fid');
+      $select->addField('f', 'fid', 'entity_id');
+      $select->addExpression("'file'", 'bundle');
+      $select->addField('f', 'status', 'status');
+      $select->addExpression("'file'", 'entity_type');
+      $select->addExpression(REQUEST_TIME, 'changed');
+      $select->where("reverse(left(reverse(f.filename),LOCATE('.',reverse(f.filename))-1)) IN ('".implode('\',\'',array('pdf','xls','ppt','doc','xlsx','pptx','txt','docx','rtf','xml'))."')");
+
+      $insert = db_insert($indexer_table)
+        ->fields(array('entity_id', 'status','bundle', 'entity_type', 'changed'))
+        ->from($select)
+        ->execute();
+    }
+  }
+  catch (Exception $e) {
+    $transaction->rollback();
+    drupal_set_message($e->getMessage(), 'error');
+    watchdog_exception('Apache Solr', $e);
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+function webfm_apachesolr_result($doc, &$result, &$extra) {
+  $result += array(
+    'type' => 'File',
+    'user' => theme('username', array('account' => $doc)),
+    'date' => isset($doc->created) ? $doc->created : 0,
+    'uid' => $doc->is_uid,
+  );
+}
+
+function webfm_apachesolr_extract($env_id, $file){
+  $env = apachesolr_environment_load($env_id);
+
+  $solr = apachesolr_get_solr($env_id);
+  try {
+
+    $filename = basename($file->uri);
+    $params = array(
+      'extractOnly' => 'true',
+      'resource.name' => $filename,
+      'extractFormat' => 'text',
+    );
+    $filepath = drupal_realpath($file->uri);
+    // Construct a multi-part form-data POST body in $data.
+    $boundary = '--' . md5(uniqid(REQUEST_TIME));
+    $data = "--{$boundary}\r\n";
+    // The 'filename' used here becomes the property name in the response.
+    $data .= 'Content-Disposition: form-data; name="file"; filename="extracted"';
+    $data .= "\r\nContent-Type: application/octet-stream\r\n\r\n";
+    $data .= file_get_contents($filepath);
+    $data .= "\r\n--{$boundary}--\r\n";
+    $headers = array('Content-Type' => 'multipart/form-data; boundary=' . $boundary);
+    $options = array(
+      'method' => 'POST',
+      'headers' => $headers,
+      'data' => $data,
+    );
+  }
+  catch (Exception $e) {
+    watchdog('Apache solr','Failed to open document %file',array('%file'=>$file->uri),WATCHDOG_ERROR);
+    return "";
+  }
+  try {
+    $response = $solr->makeServletRequest('update/extract',$params,$options);
+  }
+  catch (Exception $e) {
+    watchdog('Apache solr','Failed to index document %file',array('%file'=>$file->uri),WATCHDOG_ERROR);
+    watchdog_exception("Apache solr", $e);
+  }
+  return $response;
+}
+
 /**
  * Implements hook_file_load().
  *
@@ -128,6 +314,26 @@ function webfm_file_insert($file) {
   if (property_exists($file, 'webfm') && $file->webfm) {
     $fields = array('fid' => $file->fid, 'modified' => filemtime($file->uri));
     db_insert('webfm_file')->fields($fields)->execute();
+    file_usage_add($file, 'webfm', 'webfm', 0, 1);
+    if (function_exists('apachesolr_entity_update')) {
+      $fpieces = explode('.', $file->filename);
+      $ext = array_pop($fpieces);
+      if (in_array(strtolower($ext),array('pdf','xls','ppt','doc','xlsx','pptx','txt','docx','rtf','xml'))) {
+
+        $indexer_table = apachesolr_get_indexer_table('file');
+        db_merge($indexer_table)
+        ->key(array(
+          'entity_type' => 'file',
+          'entity_id' => $file->fid,
+        ))
+        ->fields(array(
+          'bundle' => 'file',
+          'status' => $file->status,
+          'changed' => REQUEST_TIME,
+        ))
+        ->execute();
+      }
+    }
   }
 }
 
@@ -140,6 +346,14 @@ function webfm_file_update($file) {
   if (property_exists($file, 'webfm') && $file->webfm) {
     $fields = array('modified' => filemtime($file->uri));
     db_update('webfm_file')->fields($fields)->condition('fid', $file->fid, '=')->execute();
+    $usage = file_usage_list($file);
+    if (!isset($usage['webfm']))
+    {
+      file_usage_add($file, 'webfm', 'webfm', 0, 1);
+    }
+    if (function_exists('apachesolr_mark_entity')) {
+      apachesolr_mark_entity('file',$file->fid);
+    }
   }
 }
 
@@ -216,6 +430,14 @@ function webfm_permission() {
       'title' => t('Modify any webfm file'),
       'description' => t('Allow users to move or rename webfm files'),
     ),
+    'overwrite any webfm file' => array(
+      'title' => t('Overwrite any webfm file'),
+      'description' => t('Allow users to overwrite webfm files'),
+    ),
+    'overwrite own webfm file' => array(
+      'title' => t('Overwrite own webfm file'),
+      'description' => t('Allow users to overwrite their own webfm files'),
+    ),
     'modify own webfm files' => array(
       'title' => t('Modify own webfm files'),
       'description' => t('Allow users to move or rename their own webfm files'),
@@ -244,6 +466,11 @@ function webfm_theme(&$existing, $type, $theme, $path) {
  * Handle file download request
  */
 function webfm_file_download($fid) {
+  if (strpos($fid,'public://') == 0) {
+    if (stripos(request_uri(),'/webfm') === FALSE) {
+      return array('Content-Type'=>'bin');
+    }
+  }
   $fid = intval($fid);
   if ($fid <= 0) {
     drupal_not_found();
@@ -278,6 +505,24 @@ function webfm_file_download($fid) {
     $http_headers['Pragma'] = 'no-cache';
   }
   file_transfer($file_obj->uri, $http_headers);
+}
+
+/**
+ * Handle access to old files
+ */
+function webfm_migrate_file_view($fid) {
+  $old = db_query('SELECT * FROM migrate_map_webfm_files WHERE sourceid1=:fid', array(':fid'=>$fid));
+  $record = $old->fetchObject();
+  if ($record)
+  {
+    $new_fid = $record->destid1;
+    return array('content'=>array(
+     '#markup'=>'We couldn\'t find the file you were looking for,  <strong>but it looks like it might have moved <a href="/webfm/'.$new_fid.'">here</a></strong>!',
+    ));
+  }
+  return array('content'=>array(
+   '#markup'=>'We couldn\'t find the file you were looking for!',
+  ));
 }
 
 /**
@@ -511,7 +756,20 @@ function webfm_json() {
       $treeData = new stdClass();
       $treeData->trees = array();
       // Build the directory listing from the backend
-      $treeData->trees[0] = $backend->buildWebTree(variable_get('webfm_root', "SITE"));
+      if ($param0)
+      {
+        $param0 = trim(webfm_utf8_urldecode($param0));
+        if (preg_match('/\.\./', $param0) || strpos($param0, variable_get('webfm_root', "SITE")) !== 0) {
+          $response['status'] = 'false';
+          $response['err'] = t('Invalid path');
+          break;
+        }
+        $treeData->trees[0] = $backend->buildWebTree($param0);
+      }
+      else
+      {
+        $treeData->trees[0] = $backend->buildWebTree(variable_get('webfm_root', "SITE"));
+      }
       // Invoke webfm_readtrees hook
       module_invoke_all('webfm_readtrees', $backend, $treeData);
       $response['tree'] = $treeData->trees;
@@ -729,8 +987,10 @@ function webfm_js() {
   //$js = 'var jQuery17 = jQuery.noConflict(true);
   $js = 'function getBaseUrl(){return "' . $base_root . '";}';
   $js .= 'function getWebfmIconDir(){return "' . $base_root . '/' . drupal_get_path('module', 'webfm') . '/image/icon";}';
+  $js .= 'function getWebfmPluginDir(){return "' . $base_root . '/' . drupal_get_path('module', 'webfm') . '/plugins";}';
   //drupal_add_js(drupal_get_path('module','webfm') . '/js/jquery-1.7.2.js');
   drupal_add_js(drupal_get_path('module', 'webfm') . '/js/jquery-ui.js');
+  drupal_add_js(drupal_get_path('module', 'webfm') . '/js/zeroclipboard.min.js');
   drupal_add_js(drupal_get_path('module', 'webfm') . '/js/jquery.contextmenu.js');
   drupal_add_js($js, 'inline');
   drupal_add_js(drupal_get_path('module', 'webfm') . '/js/webfm.js');
@@ -749,6 +1009,29 @@ function webfm_css() {
   drupal_add_css(drupal_get_path('module', 'webfm') . '/css/jquery-ui.css');
   // Invoke webfm_added_css hook
   module_invoke_all('webfm_added_css');
+}
+
+function webfm_form_menu_edit_item_alter(&$form, &$form_state, $form_id)
+{
+
+ /* $form = array_slice($form, 0, 3, true) +
+    array("browse_server" => array(
+    '#type' => 'button',
+    '#value' => 'Browse Server',
+   )) +
+    array_slice($form, 3, count($form)-3, true);  
+  $form['browse_server']['#after_build'] = array('webfm_load_menu_button_js');
+  dsm($form);
+  dsm($form_state);*/
+}
+
+
+function webfm_load_menu_button_js($element){
+    //dsm('loading js' . drupal_get_path('module', 'webfm'));
+    drupal_add_js(
+      drupal_get_path('module', 'webfm') 
+        . '/js/menu.js');
+  return($element );
 }
 
 /**
@@ -770,11 +1053,16 @@ function webfm_settings_form($form, &$form_state) {
     '#type' => 'checkbox',
     '#title' => t('If directory does not exist create it'),
   );
+  $form['webfm']['lock_root'] = array(
+    '#type' => 'checkbox',
+    '#default_value' => variable_get('webfm_lock_root',FALSE),
+    '#title' => t('Prevent modification of root directory by people who are not webfm admins'),
+  );
   $form['webfm']['extensions'] = array(
     '#type' => 'textfield',
     '#title' => t('Valid file extensions'),
     '#description' => t('These are a space separated list of extensions that are valid inside webfm'),
-    '#default_value' => variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp'),
+    '#default_value' => variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc docx xls pdf ppt pps odt ods odp'),
     '#required' => TRUE,
   );
   $form['actions'] = array('#type' => 'actions');
@@ -789,7 +1077,7 @@ function webfm_settings_form($form, &$form_state) {
  */
 function webfm_settings_form_validate($form, &$form_state) {
 
-  $extenions = $form_state['values']['extensions'];
+  $extensions = $form_state['values']['extensions'];
 
   if (preg_match('/[^a-zA-Z0-9 ~_-]+/', $extensions)) {
     form_state_error('extensions', t('Extensions list should be space separated and only contain standard characters'));
@@ -820,7 +1108,8 @@ function webfm_settings_form_validate($form, &$form_state) {
  */
 function webfm_settings_form_submit($form, &$form_state) {
   $path = $form_state['values']['path'];
-  $path = $form_state['values']['extensions'];
+  $lock_root = $form_state['values']['lock_root'];
+  $extensions = $form_state['values']['extensions'];
   $query_path = file_default_scheme() . '://' . $path;
 
   if (!is_dir($query_path) && $form_state['values']['create_path']) {
@@ -831,6 +1120,7 @@ function webfm_settings_form_submit($form, &$form_state) {
   }
   variable_set('webfm_file_extensions', $extensions);
   variable_set('webfm_root', $path);
+  variable_set('webfm_lock_root',$lock_root);
   drupal_set_message(t('WebFM Settings have been saved'));
 }
 

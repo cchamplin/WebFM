@@ -26,7 +26,7 @@ window.locale = {
         "cancel": "Cancel",
         "destroy": "Delete",
         "fileexists": "A file by that name already exists",
-        "fileerror": "An error occured uploading the file, the file was likely too large",
+        "fileerror": "An error occurred uploading the file, the file was likely too large",
         "fileext": "The valid contains an invalid extension, valid extensions are: %s",
     }
 };

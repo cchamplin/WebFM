@@ -17,10 +17,12 @@ function webfm_field_widget_info() {
         'default value' => FIELD_BEHAVIOR_NONE,
       ),
       'settings' => array(
+        'restrict_path' => '',
       ),
     ),
   );
 }
+
 /**
  * Implements hook_form_FORM_ID_alter().
  */
@@ -143,7 +145,13 @@ function webfm_field_widget_primary_process($element, &$form_state, $form) {
   // Make sure we include js
   webfm_js();
   webfm_css();
-  $webfm_markup = theme('webfm-documents', array('max_attachments' => $element['#cardinality']));
+
+  $field = field_widget_instance($element,$form_state);
+  if (isset($field['widget']['settings']['restrict_path']) && $field['widget']['settings']['restrict_path'] != '')
+    $restrict_path = $field['widget']['settings']['restrict_path'];
+  else
+    $restrict_path = null;
+  $webfm_markup = theme('webfm-documents', array('max_attachments' => $element['#cardinality'], 'restrict_path' => variable_get('webfm_root','SITE') . '/' . $restrict_path));
   $element['#prefix'] = $webfm_markup;
   $default_attached  = array();
   if (count($element['#value']['webfm_attached']) <= 0) {
@@ -178,12 +186,17 @@ function webfm_field_widget_value($element, $input = FALSE, &$form_state) {
     }
   }
 
+  $field = field_widget_instance($element,$form_state);
+  if (isset($field['widget']['settings']['restrict_path']) && $field['widget']['settings']['restrict_path'] != '')
+    $form_state['#restrict_path'] = variable_get('webfm_root','SITE') . '/' . $field['widget']['settings']['restrict_path'];
+
+
   // We depend on the managed file element to handle uploads.
   $return = webfm_managed_file_value($element, $input, $form_state);
   if ($input) {
     if (isset($input['webfm_attachments']) && is_array($input['webfm_attachments']) && count($input['webfm_attachments']) > 0) {
       foreach ($input['webfm_attachments'] as $fid) {
-        $return['webfm_attached'][] = intval($fid);
+          $return['webfm_attached'][] = intval($fid);
       }
     }
   }
@@ -200,13 +213,17 @@ function webfm_field_widget_value($element, $input = FALSE, &$form_state) {
     if ($fid > 0)
       $attachedcount++;
   }
-
-  if ($element['#cardinality'] >= 0 && $attachedcount > $element['#cardinality'])
-    form_error($element, t('You have exceeded the maximum number of attachments'));
-
-  if ($element['#required'] && $attachedcount < 1)
-    form_error($element, t('You must attach atleast one file'));
-
+  if ($input)
+  {
+    if ($element['#cardinality'] >= 0 && $attachedcount > $element['#cardinality'])
+    { 
+      form_error($element, t('You have exceeded the maximum number of attachments'));
+    }
+    if ($element['#required'] && $attachedcount < 1)
+    {
+      form_error($element, t('You must attach atleast one file'));
+    }
+  }
   return $return;
 }
 
@@ -228,9 +245,61 @@ function webfm_field_widget_settings_form($field, $instance) {
   $settings = $widget['settings'];
 
   $webfm_path = drupal_get_path('module', 'webfm_jquery_upload');
+
+  if ($widget['type'] == 'file_webfm') {
+   $form['restrict_path'] = array(
+     '#type' => 'textfield',
+     '#title' => t('Restrict to subdirectory'),
+     '#default_value' => $settings['restrict_path'],
+     '#element_validate' => array('webfm_validate_restriction_path'),
+     '#required' => FALSE,
+   );
+  }
+
+
   return $form;
 }
 
+function webfm_widget_is_valid_path($path, $check_root = TRUE) {
+  if (preg_match('/\.\./', $path))
+    return FALSE;
+  if ($path[0] == '/' || $path[0] == '\\')
+    return FALSE;
+
+  $path = str_replace('\\', '/', $path);
+
+  if ($check_root) {
+    foreach (module_implements('webfm_check_valid_path') as $module) {
+      $valid =  module_invoke($module, 'webfm_check_valid_path', $path);
+      if ($valid == TRUE)
+        return TRUE;
+    }
+
+    if (strpos($path, variable_get('webfm_root', "SITE")) !== 0)
+      return FALSE;
+  }
+  return TRUE;
+}
+
+
+
+/**
+ * Ensure the path supplied is valid
+ */
+function webfm_validate_restriction_path(&$form, &$form_state) {
+  if (isset($form_state['values']['instance']['widget']['settings']['restrict_path']) && $form_state['values']['instance']['widget']['settings']['restrict_path'] != '')
+  {
+    $file_path = $form_state['values']['instance']['widget']['settings']['restrict_path'];
+    if (webfm_widget_is_valid_path($file_path, false))
+    {
+      if (is_dir(file_default_scheme() . '://' . variable_get('webfm_root', "SITE") . '/' . $file_path))
+      {
+        return;
+      }
+    }
+    form_set_error('restrict_path',t('Restriction path must be a directory, and must exist inside the webfm room'));
+  }
+}
 /**
  * Submit handler for field widget.
  */

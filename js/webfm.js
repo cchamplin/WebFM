@@ -2,9 +2,8 @@
 {
   /* namespace */
   function Webfm() {}
-  Webfm.debug = true;
+  Webfm.debug = false;
   Webfm.lang = [];
-//  Webfm.lang. = Drupal.t('');
   Webfm.lang.confirm_delete_file = Drupal.t('Are you sure you want to delete this file?');
   Webfm.lang.confirm_delete_directory = Drupal.t('Are you sure you want to delete this directory and ALL files under it?');
   Webfm.lang.confirm_move_directory = Drupal.t('Are you sure you want to move this directory and ALL files under it?');
@@ -15,6 +14,8 @@
   Webfm.lang.confirm_delete = Drupal.t('Confirm delete');
   Webfm.lang.loading = Drupal.t('Loading');
   Webfm.lang.resource_error = Drupal.t('Error requesting online resource');
+  Webfm.lang.copy_link_tag = Drupal.t('Copy Link Tag to Clipboard');
+  Webfm.lang.copy_link = Drupal.t('Copy Address to Clipboard');
   Webfm.lang.file_move = Drupal.t('Move file');
   Webfm.lang.file_delete = Drupal.t('Delete file');
   Webfm.lang.file_rename = Drupal.t('Rename file');
@@ -24,9 +25,9 @@
   Webfm.lang.file_pastelink = Drupal.t('Paste link in editor window');
   Webfm.lang.toeditor = Drupal.t('Send to editor');
   Webfm.lang.directory_create = Drupal.t('Create directory');
-  Webfm.lang.directory_create_prompt = Drupal.t('Enter a name for the directorty');
+  Webfm.lang.directory_create_prompt = Drupal.t('Enter a name for the directory');
   Webfm.lang.directory_createsub = Drupal.t('Create Sub-Directory');
-  Webfm.lang.directory_createsub_prompt = Drupal.t('Enter a name for the sub directorty');
+  Webfm.lang.directory_createsub_prompt = Drupal.t('Enter a name for the sub directory');
   Webfm.lang.directory_delete = Drupal.t('Remove directory');
   Webfm.lang.directory_rename = Drupal.t('Rename directory');
   Webfm.lang.directory_search = Drupal.t('Search directory');
@@ -39,6 +40,7 @@
   Webfm.lang.name = Drupal.t('Name');
   Webfm.lang.modified = Drupal.t('Modified');
   Webfm.lang.size = Drupal.t('Size');
+  Webfm.lang.actions = Drupal.t('Actions');
   Webfm.lang.sort = Drupal.t('Sort by this column');
   Webfm.lang.file = Drupal.t('File');
   Webfm.lang.directory = Drupal.t('Directory');
@@ -52,6 +54,9 @@
   Webfm.lang.conflict_error = Drupal.t('Could not resolve conflict, did you try to rename to a file that already exists?');
   Webfm.lang.error = Drupal.t('Error');
   Webfm.lang.cancel = Drupal.t('Cancel the upload');
+  Webfm.lang.remove_attachment = Drupal.t('Remove attachment');
+  Webfm.lang.attachment_info = Drupal.t('Browse for and left click files to attach them. You can also upload files and then attach them.');
+  Webfm.lang.no_attachments = Drupal.t('No files have been attached yet');
 Webfm.icons = {
   loader: "loader",
   epdf: "pdf",
@@ -64,6 +69,7 @@ Webfm.icons = {
   exls: "xls",
   eods: "xls",
   edoc: "doc",
+  edocx: "doc",
   ertf: "doc",
   eodt: "doc",
   eodd: "doc",
@@ -114,6 +120,7 @@ Webfm.icons = {
     }
   };
   Webfm.conflict_choices = ['overwrite','rename_new','rename_existing','cancel'];
+  // Initialize our data elements
   Webfm.elements = [];
   Webfm.elements.container = null;
   Webfm.elements.tree = null; 
@@ -146,8 +153,7 @@ Webfm.icons = {
     var maxAttachments = Webfm.elements.container.data('max-attachments');
     var fParent = Webfm.elements.container.parents('form');
     if (fParent && fParent.length > 0)
-    {
-       
+    {     
        //In a form
        fParent.find('input').each( 
           function() {
@@ -188,7 +194,7 @@ Webfm.icons = {
   ****_****
   *************************/
   /*************************
-  ****File Cache****
+  ****  File Cache      ****
   *************************/
   Webfm.fCache = function()
   {
@@ -225,21 +231,18 @@ Webfm.icons = {
   {
     var pathText = dirObject.p.substring(1);
     var fullPath = pathText.split('/');
-    //fullPath.shift();
     this.root.addDirectory(dirObject,fullPath);
   }
   Webfm.fCache.prototype.insertDirectory = function(path,dirObject)
   {
     var pathText = path.substring(1);
     var fullPath = pathText.split('/');
-    //fullPath.shift();
     this.root.insertDirectory(dirObject,fullPath);
   }
   Webfm.fCache.prototype.removeDirectory = function(dirObject)
   {
     var pathText = dirObject.p.substring(1);
     var fullPath = pathText.split('/');
-    //fullPath.shift();
     this.root.removeDirectory(dirObject,fullPath);
   }
   Webfm.fCache.prototype.findDir = function(directory)
@@ -248,19 +251,16 @@ Webfm.icons = {
     if (pathText == '/')
       return this.root;
     var fullPath = pathText.split('/');
-    //fullPath.shift();
     return this.root.findDirectory(fullPath);
   }
   Webfm.fCache.prototype.addFile = function(fileObject)
   {
     var fullPath = fileObject.p.substring(1).split('/');
-    //fullPath.shift();
     this.root.addFile(fileObject,fullPath);
   }
   Webfm.fCache.prototype.removeFile = function(fileObject)
   {
     var fullPath = fileObject.p.substring(1).split('/');
-    //fullPath.shift();
     this.root.removeFile(fileObject,fullPath);
   }
   Webfm.fCache.fileRecord = function(fileName,fileModified,fileExt,fileSize,fileID)
@@ -305,7 +305,6 @@ Webfm.icons = {
   }
   Webfm.fCache.dirRecord.prototype.addFile = function(dirFile,fullPath)
   {
-    //this.cached = true;
     var searchDir = fullPath.shift();
     if (searchDir != undefined)
     {
@@ -335,7 +334,6 @@ Webfm.icons = {
   }
   Webfm.fCache.dirRecord.prototype.removeFile = function(dirFile,fullPath)
   {
-    //this.cached = true;
     var searchDir = fullPath.shift();
     if (searchDir != undefined)
     {
@@ -365,7 +363,6 @@ Webfm.icons = {
 
   Webfm.fCache.dirRecord.prototype.removeDirectory = function(dirDirectory,fullPath)
   {
-    //this.cached = true;
     var searchDir = fullPath.shift();
     for (var didx in this.directories)
     {
@@ -387,7 +384,6 @@ Webfm.icons = {
   }
   Webfm.fCache.dirRecord.prototype.addDirectory = function(dirDirectory,fullPath)
   {
-    //this.cached = true;
     var searchDir = fullPath.shift();
     if (fullPath.length > 0)
     {
@@ -492,12 +488,9 @@ Webfm.icons = {
         }
       }
     }
-    //else
-    //{
-      if (Webfm.debug)
-        console.log("Failed to find directory");
-      return null;
-    //}
+    if (Webfm.debug)
+      console.log("Failed to find directory");
+    return null;
     //TODO Asserts
   }
   /*************************
@@ -540,20 +533,55 @@ Webfm.icons = {
     conflictResolver.append(tForm);
     return conflictResolver;
   }
+
   /*************************
-  ****File Manager****
+  ****  File Manager    ****
   *************************/
   Webfm.fileManager = function()
   {
     var obj = this;
+    ZeroClipboard.setDefaults({moviePath: getWebfmPluginDir() + '/zeroclipboard.swf'});
+    this.clip = new ZeroClipboard();
+    this.clip.on('dataRequested', function(c,a) {
+      if ($(this).hasClass('action-copy-file-link'))
+      {
+        obj.ui.handleFileCopyLinkClick.call(this,{data:obj});
+      }
+      else if ($(this).hasClass('action-copy-file-address')) {
+        obj.ui.handleFileCopyAddressClick.call(this,{data:obj});
+      }
+    });
     this.ui = new Webfm.fileManager.ui();
     this.fileCache = new Webfm.fCache();
     this.fileCache.addRoot();
     this.presentWorkingDirectory = null;
     this.currentDirectoryPath = null;
+    var uri = window.location.hash;
+    if (uri != '')
+    {
+      this.uriPath = uri.indexOf('&webfm-path=') !== -1 ? uri.substring(uri.indexOf('&webfm-path=')+12) : uri.substring(uri.indexOf('webfm-path=')+11);
+      if (this.uriPath.indexOf('&') !== -1)
+        this.uriPath = this.uriPath.substring(0,this.uriPath.indexOf('&'));
+    }
+    else
+    {
+      this.uriPath = '';
+    }
     this.fileContainer = null;
     this.breadCrumb = null;
-    Webfm.dataRequest('readfiles', function(data,ob) { obj.dataCallback(data,ob); }, obj);
+    var restrictPath = Webfm.elements.container.data('restrict-path');
+    if (restrictPath != null && restrictPath != '')
+    {
+      Webfm.dataRequest('readfiles', function(data,ob) { obj.dataCallback(data,ob); }, obj, '/' + restrictPath);
+    }
+    else if (this.uriPath != '')
+    {
+      Webfm.dataRequest('readfiles', function(data,ob) { obj.dataCallback(data,ob); }, obj, '/' + this.uriPath);
+    }
+    else
+    {
+      Webfm.dataRequest('readfiles', function(data,ob) { obj.dataCallback(data,ob); }, obj);
+    }
   }
   Webfm.fileManager.prototype.dataCallback = function (result, obj)
   {
@@ -578,7 +606,7 @@ Webfm.icons = {
     elRefresh.append($('<img />').attr({'src' : getWebfmIconDir() + '/r.gif', alt : Webfm.lang.refresh}));
     elTd.append(elRefresh);
     elTopTr.append(elTd);
-    elTd = $('<td></td>').attr({id : 'webfm-bcrumb-td', colspan : '2'}).addClass('navi');
+    elTd = $('<td></td>').attr({id : 'webfm-bcrumb-td', colspan : '3'}).addClass('navi');
     elSpan = $('<span></span>').attr({id : 'webfm-dirlistbcrumb'});
     obj.breadCrumb = elSpan;
     elTd.append(elSpan);
@@ -591,7 +619,7 @@ Webfm.icons = {
     elTd.append(elSpan);
     elTopTr.append(elTd);
     elHeadingsTr = $('<tr></tr>');
-    var headings = [Webfm.lang.name,Webfm.lang.modified,Webfm.lang.size];
+    var headings = [Webfm.lang.name, Webfm.lang.modified, Webfm.lang.size, Webfm.lang.actions];
     elTd = $('<td></td>').addClass('head');
     elHeadingsTr.append(elTd);
     for (var x = 0; x < headings.length; x++)
@@ -618,16 +646,17 @@ Webfm.icons = {
     obj.fileContainer.on('click', '.dirrow a', obj,obj.ui.handleDirectoryClick);
     if ($('.webfm-browser').length > 0)
     {
-      obj.fileContainer.on('click', '.filerow a', obj,obj.ui.handleBrowserFileClick);
+      obj.fileContainer.on('click', '.filerow a.file-link', obj,obj.ui.handleBrowserFileClick);
     }
     else if (Webfm.data.attachments != null)
     {
-      obj.fileContainer.on('click', '.filerow a', obj,obj.ui.handleFileAttachClick);
+      obj.fileContainer.on('click', '.filerow a.file-link', obj,obj.ui.handleFileAttachClick);
     }
     else
     {
-      obj.fileContainer.on('click', '.filerow a', obj,obj.ui.handleFileClick);
+      obj.fileContainer.on('click', '.filerow a.file-link', obj,obj.ui.handleFileClick);
     }
+
     var directoryItems =
     {
         subdir: {name: Webfm.lang.directory_createsub, callback: function(opt,key) { obj.ui.handleMenuItem(key,opt,obj);}},
@@ -728,6 +757,8 @@ Webfm.icons = {
   }
   Webfm.fileManager.prototype.setWorkingDirectory = function(path, dir)
   {
+    this.setHash(path);
+
     if (arguments.length > 1)
     {
       this.presentWorkingDirectory = dir;
@@ -751,6 +782,14 @@ Webfm.icons = {
     elSpan.children().remove();
     var fullPath = obj.currentDirectoryPath.split('/');
     fullPath.shift();
+    var restrictPath = Webfm.elements.container.data('restrict-path');
+    if (restrictPath != null && restrictPath != '')
+    {
+      if (fullPath.length > 1)
+      {
+        fullPath.shift();
+      }
+    }
     //Todo fix breadcrumb    
     var crumbStr = '';
     for (var x = 0; x < fullPath.length-1;x++)
@@ -762,10 +801,43 @@ Webfm.icons = {
     elSpan.append(document.createTextNode(' / '));
     elSpan.append(document.createTextNode(fullPath[fullPath.length-1]));
   }
-
+  Webfm.fileManager.prototype.setHash = function(path)
+  {
+    if (window.location.hash == '')
+    {
+      window.location.hash = 'webfm-path='+path.substring(1);
+    }
+    else if (window.location.hash.indexOf('webfm-path=') !== -1)
+    {
+      var tHash = window.location.hash;
+      var hashStart = tHash.indexOf('webfm-path=');
+      var hashPart = tHash.substring(hashStart);
+      var hashEnd = hashPart.length;
+      if (hashPart.indexOf('&') !== -1)
+        hashEnd = hashPart.indexOf('&');
+      var newHash = '';
+      if (hashStart == 0)
+      {
+         newHash = 'webfm-path=' +path.substring(1);
+         newHash += hashPart.substring(hashEnd);
+      }
+      else
+      {
+        newHash = tHash.substring(0,hashStart);
+        newHash += 'webfm-path=' +path.substring(1);
+        newHash += hashPart.substring(hashEnd);
+      }
+      window.location.hash = newHash;
+    }
+    else
+    {
+      window.location.hash += '&webfm-path='+path.substring(1);
+    }
+  }
   Webfm.fileManager.prototype.dataRefreshCallback = function(result, obj)
   {
     obj.fileContainer.children().remove();
+
     var tDir = obj.fileCache.findDir(result.root.p)
     if (!tDir)
       obj.fileCache.addDirectory(result.root);
@@ -841,6 +913,7 @@ Webfm.icons = {
   Webfm.fileManager.prototype.updateCache = function(result)
   {
     var invalidateTrees = false;
+    Webfm.error.hide();
     if (result.updates)
     {
       if (result.updates.remove)
@@ -885,16 +958,31 @@ Webfm.icons = {
         }
       }
     }
+    else if (result.status !== undefined && result.status !== null)
+    {
+      if (result.status == 'false')
+      {
+        Webfm.error.show(Webfm.lang.error,result.err);
+      }
+    }
     if (invalidateTrees)
     {
-      Webfm.dataRequest('readtrees', function (data,ob) { Webfm.data.directoryTree.dataCallback(data,ob); }, Webfm.data.directoryTree);
+      var restrictPath = Webfm.elements.container.data('restrict-path');
+      if (restrictPath != null && restrictPath != '')
+      {
+        Webfm.dataRequest('readtrees', function (data,ob) { Webfm.data.directoryTree.dataCallback(data,ob); }, Webfm.data.directoryTree, restrictPath);
+      }
+      else
+      {
+        Webfm.dataRequest('readtrees', function (data,ob) { Webfm.data.directoryTree.dataCallback(data,ob); }, Webfm.data.directoryTree);
+      }
     }
   }
   Webfm.fileManager.prototype.refreshFromCache = function()
   {
     this.fileContainer.children().remove();
     this.ui.buildDirectoryRowsFromCache(this.fileContainer,this.currentDirectoryPath,this.presentWorkingDirectory.directories);
-    this.ui.buildFileRowsFromCache(this.fileContainer,this.currentDirectoryPath, this.presentWorkingDirectory.files);
+    this.ui.buildFileRowsFromCache(this.fileContainer,this.currentDirectoryPath, this.presentWorkingDirectory.files, this);
     $.webfm_sort(this.fileContainer,1);
     this.ui.enableDragging(this);
   }
@@ -962,6 +1050,8 @@ Webfm.icons = {
       elTr.append(elTd);
       elTd = $('<td></td>').addClass('txt').text('');
       elTr.append(elTd);
+      elTd = $('<td></td>').addClass('txt').text('');
+      elTr.append(elTd);
       el.append(elTr);
     }
   }
@@ -991,20 +1081,22 @@ Webfm.icons = {
 
   Webfm.fileManager.ui.prototype.buildFileRows = function(el,files,obj)
   {
-    var elTr,elTd, elLink, elIcon;
+    var elTr,elTd, elLink, elIcon, elCopyLink;
+    obj.clip.unglue(el.find('a.action-copy-file-link,a.action-copy-file-address'));
     for (var fidx in files)
     {
       obj.fileCache.addFile(files[fidx]);
       elTr = $('<tr></tr>').attr({id : 'webfm-file'+fidx, 'title' : files[fidx].p + '/' + files[fidx].n}).addClass('filerow');
       elTr.attr({'data-fid':files[fidx].id});
       elTd = $('<td></td>');
-      if (files[fidx].e && files[fidx].e != "")
+      if (files[fidx].e && files[fidx].e != "" && Webfm.icons['e'+files[fidx].e] != 'undefined')
         elIcon = $('<img />').attr({'src' : getWebfmIconDir() + '/'+Webfm.icons['e'+files[fidx].e]+'.gif', alt : Webfm.lang.file});
       else
         elIcon = $('<img />').attr({'src' : getWebfmIconDir() + '/f.gif', alt : Webfm.lang.file});
       elLink = $('<a></a>').attr({'href' : '#', 'title' : files[fidx].p + '/' + files[fidx].n}).text(files[fidx].n);
       elLink.attr({'data-fid':files[fidx].id})
       elLink.attr({'data-fsize':files[fidx].s});
+      elLink.addClass('file-link');
       elTd.append(elIcon);
       elTr.append(elTd);
       elTd = $('<td></td>');
@@ -1017,24 +1109,51 @@ Webfm.icons = {
       elTd = $('<td></td>').addClass('txt').text(Webfm.size(parseInt(files[fidx].s)));
       elTd.attr({'data-webfm-value':files[fidx].s});
       elTr.append(elTd);
+
+      elTd = $('<td></td>').addClass('txt');
+
+      elCopyLink = $('<a></a>');
+      elCopyLink.attr({'data-webfm-value':files[fidx].id, 'href':'#'});
+      elCopyLink.attr({'data-webfm-filename':files[fidx].n});
+      elCopyLink.attr({title:Webfm.lang.copy_link_tag});
+      elCopyLink.addClass('action-copy-file-link');
+      elCopyLink.addClass('wobble-top');
+      elCopyLink.text(Webfm.lang.copy_link_tag);
+      elTd.append(elCopyLink);
+
+      elCopyLink = $('<a></a>');
+      elCopyLink.attr({'data-webfm-value':files[fidx].id, 'href':'#'});
+      elCopyLink.attr({'data-webfm-filename':files[fidx].n});
+      elCopyLink.attr({title:Webfm.lang.copy_link});
+      elCopyLink.addClass('action-copy-file-address');
+      elCopyLink.addClass('wobble-top');
+      elCopyLink.text(Webfm.lang.copy_link);
+      elTd.append(elCopyLink);
+
+
+      elTd.attr({'data-webfm-value':files[fidx].id});
+      elTr.append(elTd);
       el.append(elTr);
     }
+    obj.clip.glue(el.find('a.action-copy-file-link,a.action-copy-file-address'));
   }
-  Webfm.fileManager.ui.prototype.buildFileRowsFromCache = function(el,dir,files)
+  Webfm.fileManager.ui.prototype.buildFileRowsFromCache = function(el,dir,files, obj)
   {
+    obj.clip.unglue(el.find('a.action-copy-file-link,a.action-copy-file-address'));
     var elTr,elTd, elLink, elIcon;
     for (var fidx in files)
     {
       elTr = $('<tr></tr>').attr({id : 'webfm-file'+fidx, 'title' : dir + '/' + files[fidx].name}).addClass('filerow');
       elTr.attr({'data-fid':files[fidx].fid});
       elTd = $('<td></td>');
-      if (files[fidx].ext && files[fidx].ext != "")
+      if (files[fidx].ext && files[fidx].ext != "" && Webfm.icons['e'+files[fidx].ext] != 'undefined')
         elIcon = $('<img />').attr({'src' : getWebfmIconDir() + '/'+Webfm.icons['e'+files[fidx].ext]+'.gif', alt : Webfm.lang.file});
       else
         elIcon = $('<img />').attr({'src' : getWebfmIconDir() + '/f.gif', alt : Webfm.lang.file});
       elLink = $('<a></a>').attr({'href' : '#', 'title' : dir + '/' + files[fidx].name}).text(files[fidx].name);
       elLink.attr({'data-fid':files[fidx].fid});
       elLink.attr({'data-fsize':files[fidx].size});
+      elLink.addClass('file-link');
       elTd.append(elIcon);
       elTr.append(elTd);
       elTd = $('<td></td>');
@@ -1047,12 +1166,36 @@ Webfm.icons = {
       elTd = $('<td></td>').addClass('txt').text(Webfm.size(parseInt(files[fidx].size)));
       elTd.attr({'data-webfm-value':files[fidx].size});
       elTr.append(elTd);
+
+      elTd = $('<td></td>').addClass('txt');
+
+      elCopyLink = $('<a></a>');
+      elCopyLink.attr({'data-webfm-value':files[fidx].id, 'href':'#'});
+      elCopyLink.attr({'data-webfm-filename':files[fidx].name});
+      elCopyLink.attr({title:Webfm.lang.copy_link_tag});
+      elCopyLink.addClass('action-copy-file-link');
+      elCopyLink.addClass('wobble-top');
+      elCopyLink.text(Webfm.lang.copy_link_tag);
+      elTd.append(elCopyLink);
+
+      elCopyLink = $('<a></a>');
+      elCopyLink.attr({'data-webfm-value':files[fidx].id, 'href':'#'});
+      elCopyLink.attr({'data-webfm-filename':files[fidx].name});
+      elCopyLink.attr({title:Webfm.lang.copy_link});
+      elCopyLink.addClass('action-copy-file-address');
+      elCopyLink.addClass('wobble-top');
+      elCopyLink.text(Webfm.lang.copy_link);
+      elTd.append(elCopyLink);
+
+      elTd.attr({'data-webfm-value':files[fidx].id});
+      elTr.append(elTd);
       el.append(elTr);
     }
+    obj.clip.glue(el.find('a.action-copy-file-link,a.action-copy-file-address'));
   }
   Webfm.fileManager.ui.prototype.initiateRename = function(item,obj)
   {
-    var elLink = item.find('a');
+    var elLink = item.find('a.file-link');
     var oldName = elLink.text();
     var elTdContainer = elLink.parent();
     var elRenamer = $("<input/>").attr({'id':'renamer','title':item.attr('title'),'type' :'text'}).css({'width' : '95%'}).val(oldName);
@@ -1074,7 +1217,7 @@ Webfm.icons = {
   Webfm.fileManager.prototype.attachFile = function(fid, filename,filesize)
   {
     var obj = this;
-    Webfm.data.attachments.add(fid,filename,filesize);
+    return Webfm.data.attachments.add(fid,filename,filesize);
   }
   Webfm.fileManager.prototype.changeDirectory = function(target)
   {
@@ -1117,7 +1260,7 @@ Webfm.icons = {
   }
   Webfm.fileManager.ui.prototype.initiateDownload = function(item,obj)
   {
-    $.downloadFile(Drupal.settings.basePath + 'webfm/'+item.data('fid'));
+    $.downloadFile(Drupal.settings.basePath + 'webfm/'+item.data('fid')+'/download');
   }
   Webfm.fileManager.ui.prototype.initiateView = function(item,obj)
   {
@@ -1301,30 +1444,77 @@ Webfm.icons = {
     event.preventDefault();
     event.stopPropagation();
   }
+  Webfm.fileManager.ui.prototype.handleFileCopyLinkClick = function(event)
+  {
+    var obj = event.data;
+    var fileName = $(this).data('webfm-filename');
+    var fid = $(this).data('webfm-value');
+    obj.clip.setText('<a href="/webfm/'+fid+'" target="_blank">'+fileName+'</a>');
+    $(this).addClass('active');
+    var linkItem = $(this);
+    setTimeout(function () { linkItem.removeClass('active'); } ,1100);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  Webfm.fileManager.ui.prototype.handleFileCopyAddressClick = function(event)
+  {
+    var obj = event.data;
+    var fileName = $(this).data('webfm-filename');
+    var fid = $(this).data('webfm-value');
+    obj.clip.setText('/webfm/'+fid);
+    $(this).addClass('active');
+    var linkItem = $(this);
+    setTimeout(function () { linkItem.removeClass('active'); } ,1100);
+    event.preventDefault();
+    event.stopPropagation();
+  }
   Webfm.fileManager.ui.prototype.handleFileAttachClick = function(event)
   {
     var obj = event.data;
-    obj.attachFile($(this).data('fid'),$(this).text(),$(this).data('fsize'));
+    if (obj.attachFile($(this).data('fid'),$(this).text(),$(this).data('fsize')))
+    {
+      $(this).parents('tr.filerow').addClass('add-attach-item');
+      var rowItem = $(this).parents('tr.filerow');
+      setTimeout(function() {
+        rowItem.removeClass('add-attach-item');
+      }, 7000);
+    }
     event.preventDefault();
     event.stopPropagation();
   }
   Webfm.fileManager.ui.prototype.handleBrowserFileClick = function(event)
   {
     var obj = event.data;
-    window.opener.CKEDITOR.tools.callFunction($.getURLParameter('CKEditorFuncNum'),Drupal.settings.basePath + 'webfm/'+$(this).data('fid'));
+    if (window.opener && window.opener.CKEDITOR && window.opener.CKEDITOR.tools)
+    {
+      window.opener.CKEDITOR.tools.callFunction($.getURLParameter('CKEditorFuncNum'),Drupal.settings.basePath + 'webfm/'+$(this).data('fid'));
+    }
+    else if (window.opener && window.opener.WebfmMenuHook)
+    {
+      window.opener.WebfmMenuHook.handleFile(Drupal.settings.basePath + 'webfm/'+$(this).data('fid'));
+    }
     event.preventDefault();
     event.stopPropagation();
     window.close();
   }
-  /*************************
-  **** Directory Tree ****
-  *************************/
 
+
+  /*************************
+  ****  Directory Tree  ****
+  *************************/
   Webfm.dataTree = function()
   {
     var dt = this;
     this.trees = [];
-    Webfm.dataRequest('readtrees', function (data,ob) { dt.dataCallback(data,ob); }, this);
+    var restrictPath = Webfm.elements.container.data('restrict-path');
+    if (restrictPath != null && restrictPath != '')
+    {
+      Webfm.dataRequest('readtrees', function (data,ob) { dt.dataCallback(data,ob); }, this, restrictPath);
+    }
+    else
+    {
+      Webfm.dataRequest('readtrees', function (data,ob) { dt.dataCallback(data,ob); }, this);
+    }
   }
   Webfm.dataTree.prototype.dataCallback = function(data,ob)
   {
@@ -1398,7 +1588,14 @@ Webfm.icons = {
       else
       {
         npath = tDir;
-        elDirLink = $("<a></a>").attr({'href' : '#', title : npath}).text(tDir.substr(1));
+        if(tDir.substr(1).indexOf('/') == -1)
+        {
+          elDirLink = $("<a></a>").attr({'href' : '#', title : npath}).text(tDir.substr(1));
+        }
+        else
+        {
+          elDirLink = $("<a></a>").attr({'href' : '#', title : npath}).text(tDir.substr(tDir.lastIndexOf('/')+1));
+        }
       }
       hasItems = objectHasChildren(tree[tDir]);
       elLI = $('<li></li>').attr({id : 'dirtree' + this.treeIdx + 'node' + (this.nodeIdx++), title : npath}).addClass('treenode');
@@ -1488,7 +1685,15 @@ Webfm.icons = {
   {
     if ($(this).attr('title') == Webfm.lang.refresh)
     {
-      Webfm.dataRequest('readtrees', function (data,ob) { Webfm.data.directoryTree.dataCallback(data,ob); }, Webfm.data.directoryTree);
+      var restrictPath = Webfm.elements.container.data('restrict-path');
+      if (restrictPath != null && restrictPath != '')
+      {
+        Webfm.dataRequest('readtrees', function (data,ob) { Webfm.data.directoryTree.dataCallback(data,ob); }, Webfm.data.directoryTree, restrictPath);
+      }
+      else
+      {
+        Webfm.dataRequest('readtrees', function (data,ob) { Webfm.data.directoryTree.dataCallback(data,ob); }, Webfm.data.directoryTree);
+      }
     }
     else if ($(this).attr('title') == Webfm.lang.expand)
     {
@@ -1544,8 +1749,18 @@ Webfm.icons = {
     {
       Webfm.dataRequest('fileinfo', function(data,ob) { obj.fileDataCallback(data,ob); }, obj, reqFids.substr(0,reqFids.length-1));
     }
+    else
+    {
+      var elNoAttachments = $('<span></span>').text(Webfm.lang.no_attachments);
+      elNoAttachments.attr({'id':'no-attachments-box'});
+      elNoAttachments.addClass('attachment-no-attachments-box');
+      Webfm.elements.attachments.append(elNoAttachments);
+    }
     elTable.on('click', '.remove', obj, obj.handleRemoveClick);
-    Webfm.elements.attachments.append(elTable);    
+    Webfm.elements.attachments.append(elTable);
+    var elInfo = $('<span></span>').text(Webfm.lang.attachment_info);
+    elInfo.addClass('attachment-info-box');
+    Webfm.elements.attachments.append(elInfo);
   }
   Webfm.attachments.prototype.fileDataCallback = function(data,ob)
   {
@@ -1580,7 +1795,7 @@ Webfm.icons = {
     var elRemove = $('<button/>').attr({'type':'button'}).addClass('btn btn-danger remove');
     elRemove.attr({'data-fid':fid});
     var elI = $('<i></i>').addClass('icon-trash icon-white');
-    var elSpan = $('<span></span>').text('Remove Attachment');
+    var elSpan = $('<span></span>').text(Webfm.lang.remove_attachment);
     elRemove.append(elI);
     elRemove.append(elSpan);
     var showIconText = $(window).width() > 480;
@@ -1601,13 +1816,15 @@ Webfm.icons = {
   {
     var curAttachments = this.attachmentTable.find('tr').length;
     if (this.maxAttachments > 0 && curAttachments >= this.maxAttachments)
-      return;
+      return false;
+    Webfm.elements.attachments.children('#no-attachments-box').remove();
     var elTR = this.makeRow(fid);
     elTR.children('.attachment-file-name').text(filename);
     elTR.children('.attachment-file-size').text(Webfm.size(parseInt(filesize)));
     this.attachmentTable.append(elTR);
     var elAttachmentField = $('<input/>').attr({'type':'hidden','name':this.inputName + '[]'}).val(fid);
     $('.webfm-uploader-form').append(elAttachmentField);
+    return true;
   }
   Webfm.attachments.prototype.remove = function(fid)
   {
@@ -1633,6 +1850,15 @@ Webfm.icons = {
          }
        }
     );
+    var curAttachments = this.attachmentTable.find('tr').length;
+    if (curAttachments == 0)
+    {
+      var elNoAttachments = $('<span></span>').text(Webfm.lang.no_attachments);
+      elNoAttachments.attr({'id':'no-attachments-box'});
+      elNoAttachments.addClass('attachment-no-attachments-box');
+      Webfm.elements.attachments.prepend(elNoAttachments);
+    }
+
   }
 
 
@@ -1749,12 +1975,12 @@ Webfm.icons = {
     {
       $(this).dialog('close');
     }
-    
     Webfm.elements.confirmation.dialog({
       resizable: false,
       height: 250,
       modal: true,
       buttons: btns,
+      title: title,
     });
   }
 
@@ -1806,21 +2032,13 @@ Webfm.icons = {
     for (var k in obj) 
       if (obj.hasOwnProperty(k))
       {
-//        if (!(obj[k] instanceof Array))
-//        {
-//          count++;
-//        }
-//        else
-//        {
-//          if (obj[k].length > 0)
-           count++
-//        }
+        count++
       }
     if (count > 0)
       return true;
     return false;
   }
-//Build date stamp
+
 Webfm.convertunixtime = function (unixtime) {
   var c_date, c_min, c_hours, c_day, c_mon, c_year, format;
   // unix date format doesn't have millisec component
@@ -1852,9 +2070,11 @@ Webfm.convertunixtime = function (unixtime) {
     return c_mon + "/" + c_day + "/" + c_year + " " + c_hours + ":" + c_min;
   }
 };
+
 Webfm.doubleDigit = function (num) {
   return (num < 10) ? "0" + num : num;
 };
+
 Webfm.size = function (sz) {
   var size, units;
 
@@ -1905,38 +2125,12 @@ $.webfm_sort = function(tbody,columnIdx)
   $.each(dataDirRows, function (index,row)
   {
     row.sortIdentifier = $(row).children('td').eq(dirIdx).data('webfmValue');
-    //row.sortIdentifier = row.children('td').eq(dirIdx).data('webfm-value');
   });
   $.each(dataFileRows, function (index,row)
   {
-    //console.log($(row).children('td').eq(columnIdx));
-    //console.log($(row).children('td').eq(columnIdx).data('webfm-value'));
     row.sortIdentifier = $(row).children('td').eq(columnIdx).data('webfmValue');
-    //row.sortIdentifier = row.children('td').eq(columnIdx).data('webfm-value');
   });
 
-/*
-  var dataDirRows = []
-  var dataFileRows = []
-   tbody.children('.dirrow').each(function (index,row)
-  {
-    var itm = $(this);
-    itm.sortIdentifier = itm.children('td').eq(dirIdx).data('webfm-value');
-    dataDirRows.push(itm);
-    //row.sortIdentifier = row.children('td').eq(dirIdx).data('webfm-value');
-  });
-  tbody.children('.filerow').each(function (index,row)
-  {
-    var itm = $(this);
-    console.log(itm);
-    //console.log($(row).children('td').eq(columnIdx));
-    //console.log($(row).children('td').eq(columnIdx).data('webfm-value'));
-    itm.sortIdentifier = itm.children('td').eq(columnIdx).data('webfm-value');
-    dataFileRows.push(itm);
-    //row.sortIdentifier = row.children('td').eq(columnIdx).data('webfm-value');
-    console.log(itm.sortIdentifier);
-  });
-*/
   dataDirRows.sort(function(alpha,omega)
   {
     return (alpha.sortIdentifier < omega.sortIdentifier) ? -1 : (alpha.sortIdentifier > omega.sortIdentifier) ? 1 : 0; 
@@ -1946,16 +2140,6 @@ $.webfm_sort = function(tbody,columnIdx)
     return (alpha.sortIdentifier < omega.sortIdentifier) ? -1 : (alpha.sortIdentifier > omega.sortIdentifier) ? 1 : 0; 
   });
   tbody.empty().append(dataDirRows).append(dataFileRows);;
-  /*for (row in dataDirRows)
-  {  
-    tbody.append(dataDirRows[row]); 
-  }
-  for (row in dataFileRows)
-  {  
-    console.log(dataFileRows[row]);
-    tbody.append(dataFileRows[row]); 
-  }*/
-  //tbody.append(dataFileRows);
 }
 
 

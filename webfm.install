@@ -34,6 +34,45 @@ function webfm_schema() {
     ),
     'primary key' => array('did'),
   );
+  $schema['webfm_apachesolr_index_entities_file'] = array(
+    'description' => 'Stores a record of when a file property changed to determine if it needs indexing by Solr.',
+    'fields' => array(
+      'entity_type' => array(
+        'description' => t('The type of entity.'),
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+      ),
+      'entity_id' => array(
+        'description' => t('The primary identifier for an entity.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'bundle' => array(
+        'description' => t('The bundle to which this entity belongs.'),
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+      ),
+      'status' => array(
+        'description' => t('Boolean indicating whether the entity is visible to non-administrators (eg, published for nodes).'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'changed' => array(
+        'description' => t('The Unix timestamp when an entity was changed.'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+      'changed' => array('bundle', 'changed', 'status'),
+    ),
+    'primary key' => array('entity_id'),
+  );
   $schema['webfm_file'] = array(
     'description' => 'WebFM File Records',
     'fields' => array(
@@ -113,4 +152,47 @@ function webfm_requirements($phase) {
     }
   }
   return $requirements;
+}
+
+function webfm_update_7001() {
+  $schema['webfm_apachesolr_index_entities_file'] = array(
+    'description' => 'Stores a record of when a file property changed to determine if it needs indexing by Solr.',
+    'fields' => array(
+      'entity_type' => array(
+        'description' => t('The type of entity.'),
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+      ),
+      'entity_id' => array(
+        'description' => t('The primary identifier for an entity.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'bundle' => array(
+        'description' => t('The bundle to which this entity belongs.'),
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+      ),
+      'status' => array(
+        'description' => t('Boolean indicating whether the entity is visible to non-administrators (eg, published for nodes).'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'changed' => array(
+        'description' => t('The Unix timestamp when an entity was changed.'),
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+      'changed' => array('bundle', 'changed', 'status'),
+    ),
+    'primary key' => array('entity_id'),
+  );
+  db_create_table('webfm_apachesolr_index_entities_file', $schema['webfm_apachesolr_index_entities_file']);
 }

@@ -2,7 +2,7 @@
 {
   Drupal.behaviors.webfm_jquery_upload = {
     attach: function(context) {
-      jQuery('.webfm-uploader-form',context).once('.webfm-uploader-form',uploaderInit);
+      jQuery('.webfm-uploader-form',context).once('webfm-uploader-form',uploaderInit);
     }
   };
 
@@ -19,6 +19,7 @@
     $('.webfm-uploader-form').fileupload();
     $('.webfm-uploader-form').bind('fileuploadcompleted', 
       function(e,data) { 
+        console.log('complete');
         var bridge = new $.webfm.bridge();
         console.log(data);
         for (var fidx in data.result) { 
@@ -38,6 +39,7 @@
     );
     $('.webfm-uploader-form').bind('fileuploadfail', 
       function(e,data) { 
+        console.log("failure");
       }
     );
     $('.webfm-uploader-form').fileupload('option', {
@@ -53,6 +55,12 @@
 //                fdata.push({name:'_triggering_element_name',value:'webfm_uploader_upload_button'});
 //                fdata.push({name:'_triggering_element_value',value: 'Upload'});
                 return fdata;
+            },
+            getFilesFromResponse: function (data) {
+		if (data.result && $.isArray(data.result)) {
+                  return data.result;
+                }
+                return [];
             },
             process: [
                 {

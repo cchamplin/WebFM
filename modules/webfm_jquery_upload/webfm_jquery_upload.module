@@ -94,7 +94,10 @@ function webfm_jquery_upload_ajax_deliver($page_callback_result) {
   // Print the response.
   //$commands = ajax_prepare_response($page_callback_result);
   //$json = ajax_render($commands);
-
+   if (is_array($page_callback_result) && isset($page_callback_result['file_data_process']) && isset($page_callback_result['file_data_submit']))
+   {
+     $page_callback_result = $page_callback_result['file_data_process'];
+   }
   $json = drupal_json_encode($page_callback_result);
   if (!$iframe_upload) {
     // Standard JSON can be returned to a browser's XHR object, and to
@@ -142,8 +145,10 @@ function webfm_jquery_upload_element_info() {
         $webfm_path . '/js/tmpl.min.js',
         $webfm_path . '/js/jquery.iframe-transport.js',
         $webfm_path . '/js/jquery.fileupload.js',
+        $webfm_path . '/js/jquery.fileupload-process.js',
         $webfm_path . '/js/jquery.fileupload-ui.js',
-        $webfm_path . '/js/jquery.fileupload-jui.js',
+        //$webfm_path . '/js/jquery.fileupload-validate.js',
+        $webfm_path . '/js/jquery.fileupload-jquery-ui.js',
         $webfm_path . '/js/webfm.jquery.fileupload.js',
         $webfm_path . '/js/local.js',
         $file_path . '/file.js'
@@ -244,13 +249,15 @@ function webfm_managed_file_value(&$element, $input = FALSE, $form_state = NULL)
   if ($element['#extended'] && isset($form_state_ret['file_data_process'])) {
     $fd = $form_state_ret['file_data_process'];
   }
-  elseif (is_array($form_state_ret)) {
+  else if (is_array($form_state_ret)) {
     $fd = $form_state_ret;
   }
   if ($input !== FALSE) {
     $ret = $input;
     $upload_name = implode('_', $element['#parents']);
-    if (!empty($_FILES['files']['name'][$upload_name]) && is_array($_FILES['files']['name'][$upload_name])) {
+    if (!empty($_FILES['files']['name'][$upload_name]) && 
+         is_array($_FILES['files']['name'][$upload_name]) && 
+         strlen($_FILES['files']['name'][$upload_name][0]) > 0) {
       $iparent = $element['#parents'][0];
       $depth = count($element['#parents']);
       $input_values = $form_state['input'][$iparent];
@@ -259,31 +266,6 @@ function webfm_managed_file_value(&$element, $input = FALSE, $form_state = NULL)
         $input_values = array_values($input_values);
         $input_values = $input_values[0];
       }
-      if (!empty($input_values['upload_destination'])) {
-        $form_upload_dest = drupal_substr($input_values['upload_destination'], 1);
-        $form_upload_dest = trim(webfm_utf8_urldecode($form_upload_dest));
-        $tdest = file_default_scheme() . '://' . $form_upload_dest;
-        if (preg_match('/\.\./', $form_upload_dest) || !file_prepare_directory($tdest)) {
-          watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
-          //form_set_error($upload_name, t('The files could not be uploaded.'));
-          $ret['file_data_process'] = array('error' => 1, 'message' => t('The files could not be uploaded.'));
-          return $ret;
-        }
-      }
-      else {
-        watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
-        //form_set_error($upload_name, t('The files could not be uploaded.'));
-        $ret['file_data_process'] = array('error' => 1, 'message' => t('The files could not be uploaded.'));
-        return $ret;
-      }
-
-      $result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' =>  $tdest));
-      $record = $result->fetchObject();
-      if (!webfm_check_access('uploadfile', array('dest' => $record))) {
-        $ret['file_data_process'] = array('error' => 1, 'message' => t('You do not have permission to upload files to this directory.'));
-        //form_set_error($upload_name, t('You do not have permission to upload files to this directory.'));
-        return $ret;
-      }
       $original_files = $_FILES['files'];
       unset($_FILES['files']['name'][$upload_name],
         $_FILES['files']['type'][$upload_name],
@@ -291,6 +273,56 @@ function webfm_managed_file_value(&$element, $input = FALSE, $form_state = NULL)
         $_FILES['files']['error'][$upload_name],
         $_FILES['files']['size'][$upload_name]);
 
+      if (!empty($input_values['upload_destination'])) {
+        $form_upload_dest = drupal_substr($input_values['upload_destination'], 1);
+        $form_upload_dest = trim(webfm_utf8_urldecode($form_upload_dest));
+
+
+        if (isset($form_state['#restrict_path']))
+        {
+          if (drupal_substr($form_upload_dest, 0, drupal_strlen($form_state['#restrict_path'])) !== $form_state['#restrict_path'])
+          {
+            watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
+            //form_set_error($upload_name, t('The files could not be uploaded.'));
+            $ret['file_data_process'] = array();
+            foreach ($original_files['name'][$upload_name] as $i => $name) {
+              $ret['file_data_process'] = array('error' => 1, 'message' => t(drupal_substr($form_upload_dest, 0, drupal_strlen($form_state['#restrict_path'])). ' ' . $form_state['#restrict_path']  . ' The files could not be uploaded.'));
+            }
+            return $ret;
+          }
+        }
+
+        $tdest = file_default_scheme() . '://' . $form_upload_dest;
+        if (preg_match('/\.\./', $form_upload_dest) || !file_prepare_directory($tdest)) {
+          watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
+          //form_set_error($upload_name, t('The files could not be uploaded.'));
+          $ret['file_data_process'] = array();
+          foreach ($original_files['name'][$upload_name] as $i => $name) {
+            $ret['file_data_process'][$i] = array('error' => 1, 'message' => t('The files could not be uploaded, destination does not exist.'));
+          }
+          return $ret;
+        }
+      }
+      else {
+        watchdog('webfm_jquery_upload', 'The upload directory %directory for the files field is invalid.', array('%directory' => $destination));
+        //form_set_error($upload_name, t('The files could not be uploaded.'));
+        $ret['file_data_process'] = array();
+        foreach ($original_files['name'][$upload_name] as $i => $name) {
+          $ret['file_data_process'][$i] = array('error' => 1, 'message' => t('The files could not be uploaded, no valid destination found.'));
+        }
+        return $ret;
+      }
+
+      $result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' =>  $tdest));
+      $record = $result->fetchObject();
+      if (!webfm_check_access('uploadfile', array('dest' => $record))) {
+        $ret['file_data_process'] = array();
+        foreach ($original_files['name'][$upload_name] as $i => $name) {
+          $ret['file_data_process'][$i] = array('error' => 1, 'message' => t('You do not have permission to upload files to this directory.'));
+        }
+        //form_set_error($upload_name, t('You do not have permission to upload files to this directory.'));
+        return $ret;
+      }
       // add a new form element for each extra uploaded file
       $first = TRUE;
       $delta = 0;
@@ -329,7 +361,7 @@ function webfm_managed_file_value(&$element, $input = FALSE, $form_state = NULL)
         else {
           // No validator was provided, so add one using the default list.
           // Build a default non-munged safe list for file_munge_filename().
-          $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp');
+          $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc docx xls pdf ppt pps odt ods odp');
         }
         $frdata = array();
         $extension_errors = webfm_file_validate_extensions($name, $extensions);

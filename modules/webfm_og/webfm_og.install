@@ -28,6 +28,22 @@ function webfm_og_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
+      'grp' => array(
+        'description' => 'The group permissions on the directory',
+        'size' => 'tiny',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+      ),
+      'world' => array(
+        'description' => 'The world permissions on the directory',
+        'size' => 'tiny',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'default' => 0,
+      ),
     ),
     'unique keys' => array(
       'did' => array('did'),
@@ -35,4 +51,12 @@ function webfm_og_schema() {
     'primary key' => array('id'),
   );
   return $schema;
+}
+/**
+ * Permission updates
+ */
+function webfm_og_update_7101(&$sandbox)
+{
+db_add_field('webfm_og', 'grp', array('type' => 'int', 'size' => 'tiny', 'unsigned' => TRUE, 'not null' => FALSE, 'description' => 'The group permissions on a directory.'));
+db_add_field('webfm_og', 'world', array('type' => 'int', 'size' => 'tiny', 'unsigned' => TRUE, 'not null' => FALSE, 'description' => 'The world permissions on a directory.'));
 }

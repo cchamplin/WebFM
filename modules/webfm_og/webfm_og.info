@@ -3,4 +3,4 @@ description = Organic Groups support for WebFM
 core = 7.x
 package = "WebFM"
 dependencies[] = webfm
-
+version = 7.x-1.1

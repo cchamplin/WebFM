@@ -27,7 +27,7 @@ function webfm_ajax_renamefile($params, &$response) {
     return;
   }
 
-  $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp');
+  $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc docx xls pdf ppt pps odt ods odp');
   $extension_errors = webfm_file_validate_extensions($params[1], $extensions);
   if (count($extension_errors) > 0) {
     $response['status'] = 'false';
@@ -49,8 +49,8 @@ function webfm_ajax_renamefile($params, &$response) {
   $file = file_load($file_ids[0]);
 
   // Ensure user access
-  if (!webfm_check_access('renamefile', array('file' => $file, 'fpath' => $filepath))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('renamefile', array('file' => $file, 'fpath' => file_default_scheme() . '://' . $filepath),$code)) {
+    _access_denied_response($response, $code);
     return;
   }
 
@@ -170,8 +170,8 @@ function webfm_ajax_renamedir($params, &$response) {
   // Grab directory informaton
   $result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' => file_default_scheme() . '://' . $params[0]));
   $record = $result->fetchObject();
-  if (!webfm_check_access('renamedir', array('dir' => $record))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('renamedir', array('dir' => $record, 'dirparent' => file_default_scheme() . '://' . $dirpath), $code)) {
+    _access_denied_response($response, $code);
     return;
   }
 
@@ -262,8 +262,8 @@ function webfm_ajax_movefile($params, &$response) {
   $record = $result->fetchObject();
 
   // Check permissions
-  if (!webfm_check_access('movefile', array('file' => $file, 'fpath' => $filepath, 'dest' => $record))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('movefile', array('file' => $file, 'fpath' => file_default_scheme() . '://' . $filepath, 'dest' => $record), $code)) {
+    _access_denied_response($response, $code);
     return;
   }
 
@@ -349,8 +349,8 @@ function webfm_ajax_movedir($params, &$response) {
   $dir_record = $dir_result->fetchObject();
   $dest_result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' =>  file_default_scheme() . '://' . $destparentpath));
   $dest_record = $dest_result->fetchObject();
-  if (!webfm_check_access('movedir', array('dir' => $dir_record, 'destdir' => $dest_record))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('movedir', array('dir' => $dir_record, 'dirparent'=> file_default_scheme() . '://' . $dirpath,'destdir' => $dest_record), $code)) {
+    _access_denied_response($response, $code);
     return;
   }
   // Get the file information for source
@@ -425,12 +425,17 @@ function webfm_ajax_deletefile($params, &$response) {
   $ret_ids = $query->execute();
   $file_ids = array_keys($ret_ids['file']);
   $file = file_load($file_ids[0]);
-  if (!webfm_check_access('deletefile', array('file' => $file, 'fpath' => $filepath))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('deletefile', array('file' => $file, 'fpath' => file_default_scheme() . '://' . $filepath), $code)) {
+    _access_denied_response($response, $code);
     return;
   }
-
-  if (!$file || !file_delete($file, TRUE)) {
+  if (!$file)
+  {
+    $response['status'] = 'false';
+    $response['err'] = t('Could not delete file');
+  }
+  file_usage_delete($file,'webfm','webfm');
+  if (!file_delete($file, TRUE)) {
     $response['status'] = 'false';
     $response['err'] = t('Could not delete file');
     return;
@@ -481,8 +486,8 @@ function webfm_ajax_deletedir($params, &$response) {
   // Load directory details
   $result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' =>  file_default_scheme() . '://' . $originpath));
   $record = $result->fetchObject();
-  if (!webfm_check_access('deletedir', array('dir' => $record))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('deletedir', array('dir' => $record,'dirparent' => file_default_scheme() . '://' . $dirpath), $code)) {
+    _access_denied_response($response, $code);
     return;
   }
 
@@ -605,8 +610,8 @@ function webfm_ajax_createdir($params, &$response) {
   // Grab directory information
   $result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' =>  file_default_scheme() . '://' . $dirpath));
   $record = $result->fetchObject();
-  if (!webfm_check_access('createdir', array('destdir' => $record))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('createdir', array('destdir' => $record), $code)) {
+    _access_denied_response($response, $code);
     return;
   }
 
@@ -616,12 +621,12 @@ function webfm_ajax_createdir($params, &$response) {
     return;
   }
   global $user;
-  $fields = array('uid' => $user->uid, 'path' => $dirdrepareddest);
+  $fields = array('uid' => $user->uid, 'path' => $dirprepareddest);
   $new_did = db_insert('webfm_dir')->fields($fields)->execute();
   module_invoke_all('webfm_create_directory', $new_did);
 
   $dir_parentmodtime = filemtime(file_default_scheme() . '://' . $dirpath);
-  $dir_modtime = filemtime($dirdrepareddest);
+  $dir_modtime = filemtime($dirprepareddest);
   $response['updates'] =
     array(
       'add' => array(
@@ -660,7 +665,7 @@ function webfm_ajax_resolveconflict($params, &$response) {
   }
   $params[2] = trim(webfm_utf8_urldecode($params[2]));
 
-  $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp');
+  $extensions = variable_get('webfm_file_extensions', 'jpg jpeg gif png txt doc docx xls pdf ppt pps odt ods odp');
   $extension_errors = webfm_file_validate_extensions($params[2], $extensions);
   if (count($extension_errors) > 0) {
     $response['status'] = 'false';
@@ -694,8 +699,12 @@ function webfm_ajax_resolveconflict($params, &$response) {
   $file_ids = array_keys($ret_ids['file']);
   $file = file_load($file_ids[0]);
   $dest = file_default_scheme() . '://' . $filepath . '/' . $filename;
-  if (!webfm_check_access('resolveconflict', array('file' => $file, 'fpath' => $filepath))) {
-    _access_denied_response($response);
+
+  $dest_result = db_query('SELECT did, path, uid FROM {webfm_dir} d WHERE d.path = :root', array(':root' => file_default_scheme() . '://' . $filepath));
+  $dest_record = $dest_result->fetchObject();
+
+  if (!webfm_check_access('resolveconflict', array('file' => $file, 'destdir' => $dest_record, 'fpath' => $filepath), $code)) {
+    _access_denied_response($response, $code);
     return;
   }
   $pfile = NULL;
@@ -706,8 +715,8 @@ function webfm_ajax_resolveconflict($params, &$response) {
     $pret_ids = $pquery->execute();
     $pfile_ids = array_keys($pret_ids['file']);
     $pfile = file_load($pfile_ids[0]);
-    if (!webfm_check_access('overwritefile', array('file' => $file, 'destfile' => $pfile))) {
-      _access_denied_response($response);
+    if (!webfm_check_access('overwritefile', array('file' => $file, 'destdir'=> $dest_record, 'destfile' => $pfile),$code)) {
+      _access_denied_response($response, $code);
       return;
     }
   }
@@ -772,14 +781,15 @@ function webfm_ajax_cancelupload($params, &$response) {
   $ret_ids = $query->execute();
   $file_ids = array_keys($ret_ids['file']);
   $file = file_load($file_ids[0]);
-  if (!webfm_check_access('cancelupload', array('file' => $file))) {
-    _access_denied_response($response);
+  if (!webfm_check_access('cancelupload', array('file' => $file), $code)) {
+    _access_denied_response($response,$code);
     return;
   }
   file_delete($file, TRUE);
 }
 
-function _access_denied_response(&$response) {
+function _access_denied_response(&$response, $code) {
   $response['status'] = 'false';
-  $response['err'] = t('Access Denied');
+  $response['err'] = t('Access Denied. You do not have access to make changes in that directory or file');
+  $response['code'] = $code;
 }

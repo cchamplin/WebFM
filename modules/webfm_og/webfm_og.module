@@ -34,9 +34,28 @@ function webfm_og_settings_access($group_type, $gid) {
 /**
  * Helper function to determine if a path has a parent directory that is an OG Group Directory
  */
-function _webfm_og_check_og_parent($path) {
-  $result = db_query('SELECT path FROM {webfm_dir} d INNER JOIN {webfm_og} o ON d.did = o.did WHERE d.path=:path OR LOCATE(CONCAT(d.path, \'/\'), :path) > 0', array(':path' => $path));
-  return $result->rowCount() > 0;
+function _webfm_og_check_og_parent($path, &$code) {
+  global $user;
+  $groupdata = og_get_groups_by_user($user);
+  if (count($groupdata) == 0)
+  {
+    _webfm_og_set_code($code,'NO_GROUPS');
+    return FALSE;
+  }
+  $groups = array();
+  foreach ($groupdata as $gtype) {
+    foreach ($gtype as $gid)
+      $groups[] = $gid;
+  }
+  $result = db_query('SELECT path FROM {webfm_dir} d
+			INNER JOIN {webfm_og} o ON d.did = o.did
+			WHERE ((o.gid IN (:groups)) AND (d.path=:path OR LOCATE(CONCAT(d.path, \'/\'), :path) > 0))', array(':groups'=>$groups, ':path' => $path));
+  if ($result->rowCount() <= 0)
+  {
+    _webfm_og_set_code($code,'OG_LOCATE_PARENT_PERMISSIONS');
+    return FALSE;
+  }
+  return TRUE;
 }
 
 /**
@@ -55,13 +74,13 @@ function webfm_og_webfm_readtrees($backend, $treeData) {
   $groupInfo = node_load_multiple($groups);
   $query = db_select('webfm_dir', 'd')
            ->fields('d', array('path'))
-           ->fields('o', array('gid'))
+           ->fields('o', array('gid', 'grp', 'world'))
            ->condition('gid', $groups, 'IN');
   $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
   $result = $query->execute();
   while ($record = $result->fetchObject()) {
     $path = file_uri_target($record->path);
-    $treeData->trees[] = $backend->buildWebTree($path, $groupInfo[$record->gid]->title);
+    $treeData->trees[] = $backend->buildWebTree($path, $groupInfo[$record->gid]->title, true);
   }
 }
 
@@ -71,50 +90,141 @@ function webfm_og_webfm_readtrees($backend, $treeData) {
 function webfm_og_webfm_check_access($action, $data) {
   switch ($action) {
     case 'resolveconflict':
+      return _webfm_og_check_og_parent($data['destdir']->path, $data->code);
     case 'deletefile':
     case 'renamefile':
-      return _webfm_og_check_og_parent($data['fpath']);
+      $ret = _webfm_og_check_og_parent($data['fpath'], $code);
+      return $ret;
     case 'movefile':
-      return (_webfm_og_check_og_parent($data['fpath']) && _webfm_og_check_og_parent($data['dest']->path));
+      return (_webfm_og_check_og_parent($data['fpath'],$code) && _webfm_og_check_og_parent($data['dest']->path,$code));
     case 'cancelupload':
       return TRUE;
     case 'deletedir':
     case 'renamedir':
-      return _webfm_og_check_og_parent($data['dir']->path);
+       if (variable_get('webfm_lock_root',FALSE) && $data['dirparent'] == file_default_scheme() . '://' . variable_get('webfm_root', "SITE"))
+       {
+         $code = 'ROOT_LOCK';
+         return FALSE;
+       }
+       if (variable_get('webfm_lock_root',FALSE) && isset($data['dest']) && $data['dest']->path == file_default_scheme() . '://' . variable_get('webfm_root', "SITE"))
+       {
+         $code = 'ROOT_LOCK';
+         return FALSE;
+       }
+       if (variable_get('webfm_lock_root',FALSE) && isset($data['destdir']) && $data['destdir']->path == file_default_scheme() . '://' . variable_get('webfm_root', "SITE"))
+       {
+         $code = 'ROOT_LOCK';
+         return FALSE;
+       }
+      //print_r($data);
+      //print_r('continueing rename');
+      return _webfm_og_check_og_parent($data['dir']->path,$code);
     case 'movedir':
-      return (_webfm_og_check_og_parent($data['dir']->path) && _webfm_og_check_og_parent($data['destdir']->path));
+       if (variable_get('webfm_lock_root',FALSE) && $data['dirparent'] == file_default_scheme() . '://' . variable_get('webfm_root', "SITE"))
+       {
+        $code = 'ROOT_LOCK';
+        return FALSE;
+       }
+       if (variable_get('webfm_lock_root',FALSE) && isset($data['dest']) && $data['dest']->path == file_default_scheme() . '://' . variable_get('webfm_root', "SITE"))
+       {
+        $code = 'ROOT_LOCK';
+        return FALSE;
+       }
+       if (variable_get('webfm_lock_root',FALSE) && isset($data['destdir']) && $data['destdir']->path == file_default_scheme() . '://' . variable_get('webfm_root', "SITE"))
+       {
+        $code = 'ROOT_LOCK';
+        return FALSE;
+       }
+      return (_webfm_og_check_og_parent($data['dir']->path, $code) && _webfm_og_check_og_parent($data['destdir']->path,$code));
     case 'createdir':
-      return _webfm_og_check_og_parent($data['destdir']->path);
+      return _webfm_og_check_og_parent($data['destdir']->path,$code);
+    case 'overwritefile':
+      return _webfm_og_check_og_parent($data['destdir']->path,$code);
     case 'uploadfile':
-      return _webfm_og_check_og_parent($data['dest']->path);
+      return _webfm_og_check_og_parent($data['dest']->path, $code);
   }
   return FALSE;
+}
+
+function _webfm_og_set_code(&$code, $value)
+{
+  if (empty($code))
+  {
+    $code = $value;
+  }
+  else
+  {
+    $code .= ' && ' . $value;
+  }
 }
 
 /**
  * Implements hook_query_alter().
  */
 function webfm_og_query_webfm_check_directories_alter(QueryAlterableInterface $query) {
+
+ global $user;
+
+  $groupdata = og_get_groups_by_user($user);
+  if (count($groupdata) == 0)
+    return FALSE;
+  $groups = array();
+  foreach ($groupdata as $gtype) {
+    foreach ($gtype as $gid)
+      $groups[] = $gid;
+  }
+
+
   $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
-  $fields =& $query->getFields();
-  unset($fields['uid']);
-  global $user;
-  $query->addExpression('IF(o.id,:val,d.uid)', 'uid', array(':val' => $user->uid));
+  //$fields =& $query->getFields();
+  //unset($fields['uid']);
+  $expressions =& $query->getExpressions();
+  unset($expressions['canread']);
+  $query->addExpression('CASE WHEN o.id AND o.gid IN (:ids) THEN 2 WHEN o.world >= 1 THEN 2 ELSE 1 END','canread', array(':ids' => $groups));
 }
 
 /**
  * Implements hook_query_alter().
  */
 function webfm_og_query_webfm_check_files_alter(QueryAlterableInterface $query) {
+
+
+ global $user;
+
+  $groupdata = og_get_groups_by_user($user);
+  if (count($groupdata) == 0)
+    return FALSE;
+  $groups = array();
+  foreach ($groupdata as $gtype) {
+    foreach ($gtype as $gid)
+      $groups[] = $gid;
+  }
+
+
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  //$fields =& $query->getFields();
+  //unset($fields['uid']);
+  $expressions =& $query->getExpressions();
+  unset($expressions['canread']);
+  $query->addExpression('CASE WHEN o.id AND o.gid IN (:ids) THEN 2 
+                         WHEN o.world >= 1 THEN 2 
+                         WHEN (LOCATE ((SELECT path
+         FROM `webfm_dir` as d LEFT JOIN webfm_og as o on o.did = d.did
+         WHERE LOCATE(CONCAT(d.path,\'/\'),:rootPath) 
+         AND (o.world >= 1 OR o.gid IN (:ids))),d.path)) THEN 2
+                        ELSE 1 END','canread', array(':ids' => $groups,':rootPath'=>$query->getMetaData('root') . '/'));
+
+
+
   //$args = $query->getArguments();
   //$path = $args[':db_condition_placeholder_0'];
   //print_r($args);
-  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  //$query->leftJoin('webfm_og', 'o', 'o.did = d.did AND o.gid IN (:ids)',array(':ids'=> $groups));
   // $result = db_query('SELECT path FROM {webfm_og} WHERE');
-  $fields =& $query->getFields();
-  unset($fields['uid']);
-  global $user;
-  $query->addExpression('IF(o.id,:val,d.uid)', 'uid', array(':val' => $user->uid));
+  //$fields =& $query->getFields();
+  //unset($fields['uid']);
+  //global $user;
+  //$query->addExpression('IF(o.id,:val,d.uid)', 'uid', array(':val' => $user->uid));
 }
 
 /**
@@ -133,6 +243,7 @@ function webfm_og_webfm_check_file_access($path) {
   }
   $query = db_select('webfm_dir', 'd')
            ->fields('d', array('path'))
+           ->fields('o', array('grp', 'world'))
            ->condition('gid', $groups, 'IN')
            ->where('d.path = :path OR LOCATE(CONCAT(d.path,\'/\'),:path) > 0', array(':path' => $path));
   $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
@@ -161,8 +272,21 @@ function webfm_og_webfm_check_valid_path($path) {
   $result = $query->execute();
   while ($record = $result->fetchAssoc()) {
     $og_path = file_uri_target($record['path']);
-    if (drupal_strpos($path, $og_path) === 0)
+    if (strpos($path, $og_path) === 0)
       return TRUE;
+  }
+  return FALSE;
+}
+
+function webfm_og_get_group_path($gid)
+{
+  $query = db_select('webfm_dir', 'd')
+           ->fields('d', array('path'))
+           ->condition('gid', $gid, '=');
+  $query->leftJoin('webfm_og', 'o', 'o.did = d.did');
+  $result = $query->execute();
+  while ($record = $result->fetchAssoc()) {
+    return $record['path'];
   }
   return FALSE;
 }
@@ -240,7 +364,7 @@ function webfm_og_manage_group_validate($form, &$form_state) {
     form_set_error('path', t('The specified path is invalid'));
     return;
   }
-  $query_path = file_default_scheme() . '://' . $path;
+  $query_path = file_default_scheme() . '://' . variable_get('webfm_root') . '/' . $path;
 
   if ($form_state['values']['create_path'] == FALSE) {
     if (!is_dir($query_path)) {
@@ -271,7 +395,7 @@ function webfm_og_manage_group_submit($form, &$form_state) {
   $group_type = $form_state['values']['group_type'];
   $gid = $form_state['values']['gid'];
 
-  $path = $form_state['values']['path'];
+  $path = variable_get('webfm_root','SITE') . '/' . $form_state['values']['path'];
   $query_path = file_default_scheme() . '://' . $path;
 
   if (!is_dir($query_path) && $form_state['values']['create_path']) {
